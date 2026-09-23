@@ -1,0 +1,13 @@
+{
+  "date": "2026-09-22",
+  "typescript": "passed",
+  "build": "passed",
+  "tests_passed": 10,
+  "queue": "recurrence, rolling dates, pause/resume, run now, retry, restart recovery",
+  "runtime": "real workerd and persistent local D1, not a database mock",
+  "http": "real gateway, authentication, assets, background scheduling and automatic import tested",
+  "collection_transport_in_tests": "fixture using the previously verified Airbnb captures",
+  "docker_compose_run": "not executed: Docker is not available here",
+  "new_live_airbnb_collection": "not verified in Docker",
+  "deployment": "pending access to the user's Docker host"
+}

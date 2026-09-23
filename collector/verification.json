@@ -1,0 +1,16 @@
+{
+  "verified_at": "2026-09-18",
+  "real_airbnb_capture_pages": 5,
+  "unique_valid_observations": 50,
+  "st_pauls_bay_matches": 31,
+  "median_eur_per_night": 166.5,
+  "automated_tests_passed": 6,
+  "api_tests": "Actual route handlers with a SQLite-backed D1 adapter and mocked authentication",
+  "collector_http_test": "Health, bearer authentication and input rejection passed",
+  "typescript_check": "passed",
+  "production_build": "passed",
+  "docker_browser_execution": "not verified; Docker unavailable in editing environment",
+  "live_collector_connected": false,
+  "production_database_import": "User can load the verified dataset through the admin button",
+  "admin_browser_qa": "not completed: local sign-in plugin accepts loopback only; browser preview uses a separate host"
+}

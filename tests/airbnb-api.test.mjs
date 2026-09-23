@@ -1,0 +1,38 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {createRequire} from 'node:module';
+import {DatabaseSync} from 'node:sqlite';
+import ts from 'typescript';
+import * as normalize from '../lib/airbnb/normalize.ts';
+const require=createRequire(import.meta.url);
+const db=new DatabaseSync(':memory:');db.exec(fs.readFileSync(new URL('../drizzle/0003_chilly_queen_noir.sql',import.meta.url),'utf8'));
+let user={userId:'owner',email:'owner@example.test'};
+const wrap=(sql,args=[])=>({bind:(...values)=>wrap(sql,values),first:async()=>db.prepare(sql).get(...args),all:async()=>({results:db.prepare(sql).all(...args)}),run:async()=>({meta:{changes:Number(db.prepare(sql).run(...args).changes)}})});
+const d1={prepare:sql=>wrap(sql),batch:async statements=>{db.exec('BEGIN');try{const values=await Promise.all(statements.map(s=>s.run()));db.exec('COMMIT');return values;}catch(e){db.exec('ROLLBACK');throw e;}}};
+const source=ts.transpileModule(fs.readFileSync(new URL('../app/api/admin/airbnb/route.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
+const api={};const context={exports:api,process:{env:{}},crypto:globalThis.crypto,TextEncoder,URL,Request,AbortSignal,fetch:()=>{throw Error('Unexpected network call');},require:(name)=>{
+ if(name==='next/server')return {NextResponse:Response};
+ if(name==='@/app/chatgpt-auth')return {getChatGPTUser:async()=>user};
+ if(name==='@/db/queries')return {isAdminEmail:email=>email==='owner@example.test',propertyDb:()=>d1};
+ if(name==='@/lib/airbnb/normalize')return normalize;
+ if(name.startsWith('@/lib/airbnb/'))return require('../lib/airbnb/'+name.split('/').at(-1));
+ throw Error('Unexpected dependency '+name);
+}};vm.runInNewContext(source,context);
+const base='https://ownly.example/api/admin/airbnb';
+const post=body=>new Request(base,{method:'POST',headers:{Origin:'https://ownly.example'},body:JSON.stringify(body)});
+test('API enforces admin, persists real data, deduplicates, filters and reports disconnected collector',async()=>{
+ user=null;assert.equal((await api.GET(new Request(base))).status,403);assert.equal((await api.POST(post({action:'sample'}))).status,403);
+ user={userId:'other',email:'other@example.test'};assert.equal((await api.POST(post({action:'sample'}))).status,403);
+ user={userId:'owner',email:'owner@example.test'};
+ assert.equal((await api.POST(new Request(base,{method:'POST',headers:{Origin:'https://evil.example'},body:'{}'}))).status,403);
+ const imported=await api.POST(post({action:'sample'}));assert.equal(imported.status,200);assert.equal((await imported.json()).inserted,50);
+ const repeated=await api.POST(post({action:'sample'}));assert.equal((await repeated.json()).inserted,0);
+ const params=new URLSearchParams({area:"St. Paul's Bay",checkin:'2026-09-25',checkout:'2026-09-27',adults:'4',bedrooms:'2'});
+ const result=await api.GET(new Request(base+'?'+params));assert.equal(result.status,200);const data=await result.json();assert.equal(data.rows.length,31);assert.equal(data.totalStored,50);assert.equal(data.collectorConnected,false);
+ assert.equal(data.rows[15].total_cents/100/data.rows[15].nights,166.5);
+ params.set('adults','2');assert.equal((await (await api.GET(new Request(base+'?'+params))).json()).rows.length,0);
+ const response=await api.POST(post({action:'collect',query:{area:'Sliema',checkin:'2026-12-01',checkout:'2026-12-03',adults:4,bedrooms:2,pages:1}}));assert.equal(response.status,503);
+ assert.equal((await api.POST(post({action:'import',captures:[{}]}))).status,400);
+});

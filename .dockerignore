@@ -1,0 +1,12 @@
+node_modules
+.git
+.env*
+.wrangler
+.sites-runtime
+.next
+.vinext
+dist
+*.tsbuildinfo
+*.tar.gz
+*.zip
+collector/node_modules

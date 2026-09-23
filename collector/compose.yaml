@@ -1,0 +1,14 @@
+services:
+  airbnb-collector:
+    build:
+      context: ..
+      dockerfile: collector/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      MARKET_COLLECTOR_TOKEN: ${MARKET_COLLECTOR_TOKEN:?Set a random token of at least 32 characters}
+    ports:
+      - "127.0.0.1:8080:8080"
+    shm_size: 1gb
+    mem_limit: 2g
+    cpus: 2
