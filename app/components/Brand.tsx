@@ -12,5 +12,5 @@ export function BrandMark(){
 }
 
 export default function Brand({href='/',className=''}:BrandProps){
-  return <a className={`brand ${className}`.trim()} href={href} aria-label="Ownly home"><BrandMark/><span className="brand-word">Ownly</span></a>;
+  return <a className={`brand ${className}`.trim()} href={href} aria-label="Ownly Malta home"><BrandMark/><span className="brand-word">Ownly Malta</span></a>;
 }

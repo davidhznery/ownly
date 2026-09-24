@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { getChatGPTUser } from '@/app/chatgpt-auth';
 import { ensurePropertySchema,propertyDb } from '@/db/queries';
 import { canonicalLocality } from '@/lib/localities';
@@ -22,7 +23,7 @@ export async function GET(){
 
 export async function POST(request:Request){
   const user=await getChatGPTUser();if(!user)return NextResponse.json({error:'Unauthorized'},{status:401});
-  const body=await request.json() as Body;const error=validateManagement(body);if(error)return NextResponse.json({error},{status:400});const location=canonicalLocality(string(body,'location'));if(!location)return NextResponse.json({error:'Choose a locality from the list'},{status:400});await ensurePropertySchema();const id=crypto.randomUUID();
+  const body=await request.json() as Body;const error=validateManagement(body);if(error)return NextResponse.json({error},{status:400});const billingPlan=(await headers()).get('x-ownly-plan');const maxProperties=billingPlan==='individual'?3:billingPlan==='portfolio'?15:null;if(maxProperties){const count=await propertyDb().prepare('SELECT COUNT(*) AS count FROM properties WHERE user_id=?').bind(user.userId).first<{count:number}>();if((count?.count??0)>=maxProperties)return NextResponse.json({error:`Your plan includes up to ${maxProperties} properties. Manage your subscription to change plan.`},{status:403});}const location=canonicalLocality(string(body,'location'));if(!location)return NextResponse.json({error:'Choose a locality from the list'},{status:400});await ensurePropertySchema();const id=crypto.randomUUID();
   await propertyDb().prepare(`INSERT INTO properties (id,user_id,name,location,strategy,property_type,bedrooms,services_included,purchase_price,current_value,monthly_rent,nightly_rate,occupancy,nights_available,other_income,operating_expenses,expense_breakdown,mortgage_payment,loan_balance,management_type,lease_rent,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,user.userId,string(body,'name'),location,string(body,'strategy'),string(body,'propertyType')||'apartment',number(body,'bedrooms')||1,JSON.stringify(body.servicesIncluded??{}),number(body,'purchasePrice'),number(body,'currentValue'),number(body,'monthlyRent'),number(body,'nightlyRate'),number(body,'occupancy'),number(body,'nightsAvailable'),number(body,'otherIncome'),number(body,'operatingExpenses'),JSON.stringify(body.expenseBreakdown??[]),number(body,'mortgagePayment'),number(body,'loanBalance'),string(body,'managementType')||'owner',number(body,'leaseRent'),Date.now()).run();
   return NextResponse.json({id},{status:201});
 }

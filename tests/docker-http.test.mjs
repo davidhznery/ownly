@@ -14,8 +14,11 @@ test('Docker gateway: owner login, background queue, real persistence and no col
  const base=`http://127.0.0.1:${port}`;const auth='Basic '+Buffer.from('owner@example.test:test-owner-password-123456789').toString('base64');
  const child=spawn(process.execPath,['docker/server.mjs'],{env:{...process.env,PORT:String(port),DATA_DIR:dir,PUBLIC_ORIGIN:base,ADMIN_EMAIL:'owner@example.test',ADMIN_PASSWORD:'test-owner-password-123456789',MARKET_COLLECTOR_TOKEN:'test-collector-secret-long-enough-123456789',COLLECTOR_URL:`http://127.0.0.1:${collector.address().port}`},stdio:['ignore','pipe','pipe']});let output='';child.stderr.on('data',x=>output+=x);
  try{await Promise.race([once(child.stdout,'data'),once(child,'exit').then(()=>{throw Error(output);})]);
- assert.equal((await fetch(base+'/admin/airbnb')).status,401);
+ const signIn=await fetch(base+'/admin/airbnb');assert.equal(signIn.status,200);assert.match(await signIn.text(),/Sign in to Ownly/);assert.equal(signIn.headers.get('www-authenticate'),null);
  assert.equal((await fetch(base+'/api/admin/airbnb-jobs',{headers:{'oai-authenticated-user-email':'owner@example.test'}})).status,401);
+ const login=await fetch(base+'/login',{method:'POST',headers:{Origin:base,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:'owner@example.test',password:'test-owner-password-123456789',next:'/admin/airbnb'}),redirect:'manual'});
+ assert.equal(login.status,303);assert.equal(login.headers.get('location'),'/admin/airbnb');assert.match(login.headers.get('set-cookie'),/HttpOnly; SameSite=Lax/);
+ const cookie=login.headers.get('set-cookie').split(';')[0];assert.equal((await fetch(base+'/admin/airbnb',{headers:{Cookie:cookie}})).status,200);
  const headers={Authorization:auth,'Content-Type':'application/json',Origin:base};
  const page=await fetch(base+'/admin/airbnb',{headers});assert.equal(page.status,200);const html=await page.text();assert.match(html,/Define your comparison/);
  const asset=html.match(/href="([^" ]+\.css)"/)[1];assert.equal((await fetch(base+asset,{headers})).status,200);

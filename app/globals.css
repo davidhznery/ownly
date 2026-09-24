@@ -116,7 +116,7 @@ h2 { margin:15px 0 18px; font-size:clamp(36px,4.3vw,56px); line-height:1.05; let
 .insight-copy li { display:flex; align-items:center; gap:12px; padding:11px 0; color:#49635d; font-size:14px; }
 .insight-copy li i { width:23px; height:23px; display:grid; place-items:center; background:#e1f2ea; color:#2e7665; border-radius:50%; font-style:normal; font-size:11px; }
 .pricing-section { background:#f5f4ed; }
-.pricing-grid { width:min(1180px,calc(100% - 48px)); display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+.pricing-grid { width:min(900px,calc(100% - 48px)); display:grid; grid-template-columns:repeat(2,1fr); gap:20px; }
 .pricing-grid article { position:relative; padding:38px; border:1px solid #dbe2dc; border-radius:18px; background:white; }
 .pricing-grid article.popular { border:2px solid var(--green); box-shadow:0 24px 50px rgb(18 63 56 / 10%); }
 .popular-label { position:absolute; top:-13px; right:22px; padding:7px 12px; border-radius:99px; background:var(--green); color:white; font-size:9px; letter-spacing:.12em; font-weight:800; }

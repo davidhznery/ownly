@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { getChatGPTUser } from '@/app/chatgpt-auth';
 import { ensurePropertySchema,ensureUserProfile,hasMarketAccess,isAdminEmail,propertyDb } from '@/db/queries';
 import { canonicalLocality } from '@/lib/localities';
@@ -8,7 +9,7 @@ type Listing={listing_id:string;name:string;url:string;property_type:string;bedr
 
 export async function GET(request:Request){
   const user=await getChatGPTUser();if(!user)return NextResponse.json({error:'Unauthorized'},{status:401});
-  const profile=await ensureUserProfile(user);if(!profile||(!hasMarketAccess(profile)&&!isAdminEmail(user.email)))return NextResponse.json({error:'Market Pro required',locked:true},{status:403});
+  const profile=await ensureUserProfile(user),billingPlan=(await headers()).get('x-ownly-plan');if(!profile||(!hasMarketAccess(profile)&&billingPlan!=='portfolio'&&!isAdminEmail(user.email)))return NextResponse.json({error:'Market insights are included in Portfolio.',locked:true},{status:403});
   const url=new URL(request.url),propertyId=url.searchParams.get('propertyId');await ensurePropertySchema();
   const property=propertyId?await propertyDb().prepare('SELECT location,property_type,bedrooms,strategy FROM properties WHERE id=? AND user_id=?').bind(propertyId,user.userId).first<{location:string;property_type:string;bedrooms:number;strategy:string}>():null;
   if(propertyId&&!property)return NextResponse.json({error:'Property not found'},{status:404});
