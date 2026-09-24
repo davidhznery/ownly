@@ -12,10 +12,12 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "test:airbnb": "node --test tests/airbnb*.test.mjs",
+    "test:auth": "node --test tests/docker-auth.test.mjs",
     "test:docker": "node --test tests/docker-*.test.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
+    "google-auth-library": "^11.1.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",

@@ -28,6 +28,63 @@ Los fallos transitorios se reintentan hasta tres veces. Si Airbnb exige verifica
 
 ## Stripe y pagos
 
+### Cuenta obligatoria y acceso
+
+El servidor Docker es la entrada pública de Ownly. El flujo es: `/register`
+(Google o correo y contraseña) → `/onboarding` (plan) → Stripe Checkout →
+confirmación por webhook → `/dashboard`. Crear una cuenta no inicia la prueba;
+Stripe fija sus fechas al activar la primera suscripción. No hay acceso anónimo
+al panel ni a las API privadas. Una cuenta pendiente, vencida o con pago fallido
+puede iniciar sesión y gestionar su facturación, pero no usar el producto.
+La prueba se concede una vez por cuenta; las renovaciones tras una cancelación
+no reciben otra prueba. Los datos y sesiones de las cuentas existentes se conservan.
+
+El gateway se ejecuta con `docker compose up --build -d web`. `npm run dev`
+solo levanta la aplicación interna y no sirve el acceso Google/correo ni Stripe.
+No publiques el runtime interno directamente: la autenticación se aplica en
+`docker/gateway.mjs`, que elimina las cabeceras de identidad enviadas por el cliente.
+
+### Inicio de sesión con Google
+
+1. En Google Cloud / Google Auth Platform, configura la audiencia, los datos de
+   marca y un cliente OAuth de tipo **Web application**. Durante el modo de
+   pruebas, añade las cuentas que podrán iniciar sesión como usuarios de prueba.
+2. Registra exactamente la URI de redirección de tu entorno:
+   `http://localhost:3001/auth/google/callback` para desarrollo y
+   `https://ownlymalta.com/auth/google/callback` para ese dominio en producción.
+   Usa clientes separados para desarrollo y producción.
+3. Añade `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` al `.env` local del servidor,
+   y verifica que `PUBLIC_ORIGIN` coincide con el origen público. No subas secretos
+   al repositorio. Reconstruye el servicio web.
+4. El botón Google aparece cuando ambas variables están presentes. Sin ellas,
+   el registro por correo funciona y no aparece un botón inoperante.
+
+Solo se solicitan `openid email profile`. La biblioteca oficial de Google
+verifica la firma, emisor, caducidad y audiencia del ID token; Ownly comprueba
+además el correo verificado, nonce, estado de un solo uso y cookie del navegador.
+El código usa PKCE. No almacena tokens de acceso ni de actualización de Google.
+Si ya existe una cuenta con ese correo, primero hay que entrar con contraseña y
+elegir **Connect Google** en `/account/access`; nunca se unen cuentas por correo
+sin autenticar al titular de la cuenta existente. El propietario conserva su
+acceso administrativo mediante correo y contraseña.
+
+Prueba local de los flujos y controles de acceso: `npm run test:auth`. Se usan
+dobles únicamente para Google, Stripe y el runtime de la aplicación; no se
+crean cobros ni cuentas externas. La validación real requiere credenciales de
+Google y un sandbox Stripe configurado, incluyendo el webhook.
+
+Para las pruebas completas del runtime, usa Node 24 (la versión del Dockerfile).
+Con Node 22.17, ejecuta `npm run test:docker` con
+`NODE_OPTIONS=--experimental-strip-types` para los módulos TypeScript existentes.
+
+Referencia: https://developers.google.com/identity/protocols/oauth2/web-server
+
+El almacén de cuentas y el estado temporal OAuth pertenecen a una instancia
+del servidor con el volumen persistente `/data`; esta configuración no admite
+varias réplicas concurrentes compartiendo `accounts.json`. Reiniciar el servidor
+durante un acceso Google obliga a repetir ese acceso. El correo y contraseña
+no incluyen todavía verificación de correo ni recuperación automática de contraseña.
+
 1. Stripe Checkout con Billing gestiona el pago inicial, la prueba y las renovaciones; el portal permite cancelar y actualizar la tarjeta.
 2. Para desarrollo, usa un sandbox separado. Crea una clave restringida de prueba con Checkout Sessions (lectura/escritura), Subscriptions (lectura) y Billing Portal Sessions (escritura). Guarda la clave rk_test en el archivo .env local, que no se sube a git.
 3. Crea dos productos y un precio mensual recurrente por producto: Individual €9 y Portfolio €25. Configura sus Price IDs en STRIPE_INDIVIDUAL_PRICE_ID y STRIPE_PORTFOLIO_PRICE_ID.
