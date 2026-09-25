@@ -8,6 +8,14 @@ const paidCheckout = checkout => ['paid', 'no_payment_required'].includes(checko
 export function createBilling({ origin, stripe, stripeReady, webhookSecret, priceIds, accounts, sessions, auth }) {
   const busy = new Set();
   const message = (res, title, intro, body, status = 200) => sendPage(res, authPage({ title, intro, body, step: 2 }), status);
+  function openCheckout(res, checkoutUrl) {
+    const destination = new URL(checkoutUrl);
+    if (destination.protocol !== 'https:' || destination.hostname !== 'checkout.stripe.com') throw Error('Unexpected Checkout destination');
+    const href = escapeHtml(destination.href);
+    const page = authPage({ title: 'Continue to Stripe', intro: 'Your secure checkout is ready.', step: 2,
+      body: `<a class="button" href="${href}">Continue to Stripe &rarr;</a><p class="note">If Stripe does not open automatically, use the button above.</p>` });
+    sendPage(res, page.replace('<head>', `<head><meta http-equiv="refresh" content="0;url=${href}">`));
+  }
   function onboarding(req, res, account, { plan = account.plan, next = '/dashboard', error = '', notice = '', status = 200 } = {}) {
     const form = sessions.form(req), returning = Boolean(account.trialStartedAt || account.stripeSubscriptionId);
     const manage = account.stripeSubscriptionId && !['canceled', 'incomplete_expired'].includes(account.status);
@@ -83,7 +91,7 @@ export function createBilling({ origin, stripe, stripeReady, webhookSecret, pric
         try {
           if (account.stripeCheckoutSessionId) {
             const previous = await stripe.checkout.sessions.retrieve(account.stripeCheckoutSessionId);
-            if (previous.status === 'open' && previous.metadata?.plan === planId) { redirect(res, previous.url); return true; }
+            if (previous.status === 'open' && previous.metadata?.plan === planId) { openCheckout(res, previous.url); return true; }
             if (previous.status === 'complete' && (!account.stripeSubscriptionId || id(previous.subscription) !== account.stripeSubscriptionId)) { redirect(res, '/billing/success?session_id=' + encodeURIComponent(previous.id)); return true; }
             if (previous.status === 'open') await stripe.checkout.sessions.expire(previous.id);
           }
@@ -91,7 +99,7 @@ export function createBilling({ origin, stripe, stripeReady, webhookSecret, pric
           accounts.update(account.id, { checkoutAttempt: attempt, checkoutAttemptPlan: planId, checkoutReturnTo: next, stripeCheckoutSessionId: null });
           const checkout = await createCheckout(stripe, { account, planId, priceIds, origin, idempotencyKey: `ownly:${account.id}:${attempt}` });
           accounts.update(account.id, { stripeCheckoutSessionId: checkout.id, plan: planId });
-          redirect(res, checkout.url);
+          openCheckout(res, checkout.url);
         } catch { onboarding(req, res, account, { plan: planId, next, error: 'We could not open checkout. Your account is saved. Please try again.', status: 502 }); }
         finally { busy.delete(account.id); }
         return true;

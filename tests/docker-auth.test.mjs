@@ -111,14 +111,16 @@ test('authenticated checkout works without a separate form cookie and rejects fo
   const f = await fixture(t), client = f.browser();
   await f.register(client);
   const page = await client.request('/onboarding?plan=individual');
-  assert.match(page.headers.get('content-security-policy'), /form-action 'self' https:\/\/checkout\.stripe\.com;/);
+  assert.match(page.headers.get('content-security-policy'), /form-action 'self';/);
   client.cookies.delete('ownly_form');
   assert.equal((await client.request('/checkout', { form: { plan: 'individual', csrf: 'forged' } })).status, 403);
   await client.request('/onboarding?plan=individual');
   assert.equal((await client.request('/checkout', { form: { plan: 'individual' }, headers: { Origin: 'https://evil.test', 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
   await client.request('/onboarding?plan=individual');
   const start = await client.request('/checkout', { form: { plan: 'individual' } });
-  assert.match(start.location, /^https:\/\/checkout.stripe.com/);
+  assert.equal(start.status, 200);
+  assert.match(start.text, /<meta http-equiv="refresh" content="0;url=https:\/\/checkout\.stripe\.com\/test\/1">/);
+  assert.match(start.text, /href="https:\/\/checkout\.stripe\.com\/test\/1">Continue to Stripe/);
   assert.equal(f.calls.length, 1);
 });
 
@@ -182,8 +184,10 @@ test('authenticated checkout is reused; success URL cannot sign in; only signed 
   const f = await fixture(t), client = f.browser(), account = await f.register(client);
   await client.request('/onboarding');
   const start = await client.request('/checkout', { form: { plan: 'portfolio' } });
-  assert.match(start.location, /^https:\/\/checkout.stripe.com/);
-  await client.request('/checkout', { form: { plan: 'portfolio' } });
+  assert.equal(start.status, 200);
+  assert.match(start.text, /href="https:\/\/checkout\.stripe\.com\/test\/1">Continue to Stripe/);
+  const reused = await client.request('/checkout', { form: { plan: 'portfolio' } });
+  assert.match(reused.text, /href="https:\/\/checkout\.stripe\.com\/test\/1">Continue to Stripe/);
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0].params.subscription_data.trial_period_days, 7); assert.ok(f.calls[0].options.idempotencyKey);
   const checkout = f.completeCheckout(account);
   assert.equal((await f.browser().request('/billing/success?session_id=' + checkout.id)).location, '/login');
