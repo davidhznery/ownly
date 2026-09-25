@@ -17,7 +17,7 @@ export function sendPage(res, html, status = 200, cookies = []) {
   const nonce = /<script nonce="([A-Za-z0-9+/=]+)">/.exec(html)?.[1];
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, no-transform', 'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; script-src ${nonce ? `'nonce-${nonce}'` : "'none'"}; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
+    'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; script-src ${nonce ? `'nonce-${nonce}'` : "'none'"}; form-action 'self' https://checkout.stripe.com; base-uri 'none'; frame-ancestors 'none'`,
     ...(cookies.length ? { 'Set-Cookie': cookies } : {}),
   });
   res.end(html);

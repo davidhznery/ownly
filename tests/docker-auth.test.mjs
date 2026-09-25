@@ -110,7 +110,8 @@ test('forms reject CSRF and offsite redirects; login works for unpaid and cancel
 test('authenticated checkout works without a separate form cookie and rejects forged or cross-site requests', async t => {
   const f = await fixture(t), client = f.browser();
   await f.register(client);
-  await client.request('/onboarding?plan=individual');
+  const page = await client.request('/onboarding?plan=individual');
+  assert.match(page.headers.get('content-security-policy'), /form-action 'self' https:\/\/checkout\.stripe\.com;/);
   client.cookies.delete('ownly_form');
   assert.equal((await client.request('/checkout', { form: { plan: 'individual', csrf: 'forged' } })).status, 403);
   await client.request('/onboarding?plan=individual');
