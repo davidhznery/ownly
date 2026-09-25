@@ -4,6 +4,7 @@ import { createRuntime, identityHeaders } from './runtime.mjs';
 import { JobQueue } from './jobs.mjs';
 import { createAccountStore, createStripeClient } from './accounts.mjs';
 import { createGateway } from './gateway.mjs';
+import { createResetEmailSender } from './reset-email.mjs';
 
 const email = process.env.ADMIN_EMAIL, password = process.env.ADMIN_PASSWORD, token = process.env.MARKET_COLLECTOR_TOKEN;
 if (!email || !password || password.length < 16 || !token || token.length < 32) throw Error('Run the Docker setup script first. Credentials are missing or too short.');
@@ -29,6 +30,7 @@ const server = createGateway({ runtime: mf, accounts, queue, publicAssets, origi
   stripe: createStripeClient(process.env.STRIPE_SECRET_KEY || ''), webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   priceIds: { individual: process.env.STRIPE_INDIVIDUAL_PRICE_ID || '', portfolio: process.env.STRIPE_PORTFOLIO_PRICE_ID || '' },
   googleClientId: process.env.GOOGLE_CLIENT_ID || '', googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  sendResetEmail: createResetEmailSender({ apiKey: process.env.RESEND_API_KEY || '', from: process.env.RESET_EMAIL_FROM || '', origin }),
 });
 server.listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log('Ownly ready. Automatic search queue is running.'));
 async function stop() { clearInterval(interval); server.close(); while (queue.busy) await new Promise(resolve => setTimeout(resolve, 100)); queue.close(); await mf.dispose(); process.exit(0); }

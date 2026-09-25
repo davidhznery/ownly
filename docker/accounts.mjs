@@ -20,6 +20,10 @@ export function createAccountStore(dataDir){
    accounts.push(account);write(accounts);return account;
   },
   linkGoogle(id,googleId){const accounts=read(),account=accounts.find(a=>a.id===id);if(!account||accounts.some(a=>a.id!==id&&a.googleId===googleId))throw Error('GOOGLE_ALREADY_LINKED');if(account.googleId&&account.googleId!==googleId)throw Error('GOOGLE_ALREADY_LINKED');account.googleId=googleId;write(accounts);return account;},
+  requestPasswordReset(id,tokenHash,expiresAt,requestedAt){const accounts=read(),account=accounts.find(a=>a.id===id);if(!account)return null;account.resetTokenHash=tokenHash;account.resetExpiresAt=expiresAt;account.resetRequestedAt=requestedAt;write(accounts);return account;},
+  clearPasswordReset(id,tokenHash){const accounts=read(),account=accounts.find(a=>a.id===id);if(!account||account.resetTokenHash!==tokenHash)return;account.resetTokenHash=null;account.resetExpiresAt=null;account.resetRequestedAt=null;write(accounts);},
+  byResetToken(tokenHash,now=Date.now()){return read().find(account=>account.resetTokenHash===tokenHash&&account.resetExpiresAt>now)||null;},
+  consumePasswordReset(tokenHash,passwordHash,now=Date.now()){const accounts=read(),account=accounts.find(a=>a.resetTokenHash===tokenHash&&a.resetExpiresAt>now);if(!account)return null;account.passwordHash=passwordHash;account.passwordChangedAt=now;account.resetTokenHash=null;account.resetExpiresAt=null;write(accounts);return account;},
   update(id,changes){const accounts=read(),index=accounts.findIndex(account=>account.id===id);if(index<0)return null;accounts[index]={...accounts[index],...changes};write(accounts);return accounts[index];},
   bySubscription(subscriptionId){return subscriptionId?read().find(a=>a.stripeSubscriptionId===subscriptionId)||null:null;},
   byCustomer(customerId){return customerId?read().find(a=>a.stripeCustomerId===customerId)||null:null;},

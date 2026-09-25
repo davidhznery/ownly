@@ -18,7 +18,8 @@ export function createSessions({ password, token, email, origin, accounts, now =
     const match = /^(\d{13})\.([a-zA-Z0-9-]+)\.([a-f0-9]{64})$/.exec(cookieValue(header, 'ownly_session'));
     if (!match || Number(match[1]) <= now() || Number(match[1]) > now() + lifetime || !equal(match[3], sign(`${match[1]}.${match[2]}`))) return null;
     if (match[2] === 'owner') return { userId: 'docker-owner', email, name: 'Ownly Owner', owner: true };
-    return accounts.byId(match[2]);
+    const account = accounts.byId(match[2]);
+    return account && (!account.passwordChangedAt || Number(match[1]) - lifetime >= account.passwordChangedAt) ? account : null;
   }
   function validForm(value) {
     const match = /^(\d{13})\.([a-f0-9]{64})\.([a-f0-9]{64})$/.exec(value || '');

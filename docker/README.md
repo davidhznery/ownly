@@ -59,14 +59,47 @@ No publiques el runtime interno directamente: la autenticación se aplica en
 4. El botón Google aparece cuando ambas variables están presentes. Sin ellas,
    el registro por correo funciona y no aparece un botón inoperante.
 
+Para el servidor local de este proyecto, edita el archivo `.env` en la raíz
+y añade los valores reales de `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`. En
+Google Cloud, selecciona un cliente OAuth **Web application** y registra la
+redirect URI que corresponde a `PUBLIC_ORIGIN`: por ejemplo,
+`http://localhost:3001/auth/google/callback` en local o
+`https://ownlymalta.com/auth/google/callback` para ese dominio. Si la pantalla de
+consentimiento está en modo de prueba, añade tu cuenta Google a sus usuarios de
+prueba. Guarda el archivo y ejecuta `docker compose up -d --build web` desde la
+carpeta del proyecto. Usa clientes separados para local y producción; la URL
+desde la que abres Ownly debe coincidir con `PUBLIC_ORIGIN` para que funcionen
+las cookies, los formularios y el retorno de Google.
+
 Solo se solicitan `openid email profile`. La biblioteca oficial de Google
 verifica la firma, emisor, caducidad y audiencia del ID token; Ownly comprueba
 además el correo verificado, nonce, estado de un solo uso y cookie del navegador.
 El código usa PKCE. No almacena tokens de acceso ni de actualización de Google.
-Si ya existe una cuenta con ese correo, primero hay que entrar con contraseña y
-elegir **Connect Google** en `/account/access`; nunca se unen cuentas por correo
-sin autenticar al titular de la cuenta existente. El propietario conserva su
-acceso administrativo mediante correo y contraseña.
+Si una cuenta ya existe con ese correo, un inicio con Google cuyo ID token
+verificado confirme el mismo correo la vincula a esa cuenta; no se crea otra.
+Si la cuenta ya está asociada a un Google ID diferente, se rechaza la unión.
+El propietario conserva su acceso administrativo mediante correo y contraseña.
+
+### Recuperación de contraseña
+
+El enlace **Forgot password?** envía un correo con un token aleatorio de un solo
+uso que caduca en 30 minutos. Solo se guarda su hash. Al cambiar la contraseña,
+las sesiones anteriores dejan de funcionar. Las solicitudes se limitan por IP
+y por cuenta, y la respuesta no confirma si un correo tiene cuenta.
+
+Para activar el envío, verifica un dominio de correo en Resend
+(https://resend.com/domains), crea una API key y añade al `.env` local:
+
+```
+RESEND_API_KEY=re_...
+RESET_EMAIL_FROM=Ownly <accounts@tu-dominio-verificado.com>
+```
+
+Usa un remitente perteneciente al dominio verificado. Reconstruye el servicio
+web con `docker compose up -d --build web`. Sin esta configuración, el formulario
+de recuperación muestra que el correo de restablecimiento no está disponible.
+Las cuentas creadas con Google también pueden establecer una contraseña mediante
+un enlace de recuperación enviado a su correo verificado.
 
 Prueba local de los flujos y controles de acceso: `npm run test:auth`. Se usan
 dobles únicamente para Google, Stripe y el runtime de la aplicación; no se
@@ -83,7 +116,7 @@ El almacén de cuentas y el estado temporal OAuth pertenecen a una instancia
 del servidor con el volumen persistente `/data`; esta configuración no admite
 varias réplicas concurrentes compartiendo `accounts.json`. Reiniciar el servidor
 durante un acceso Google obliga a repetir ese acceso. El correo y contraseña
-no incluyen todavía verificación de correo ni recuperación automática de contraseña.
+no incluyen todavía verificación de correo al registrarse.
 
 1. Stripe Checkout con Billing gestiona el pago inicial, la prueba y las renovaciones; el portal permite cancelar y actualizar la tarjeta.
 2. Para desarrollo, usa un sandbox separado. Crea una clave restringida de prueba con Checkout Sessions (lectura/escritura), Subscriptions (lectura) y Billing Portal Sessions (escritura). Guarda la clave rk_test en el archivo .env local, que no se sube a git.

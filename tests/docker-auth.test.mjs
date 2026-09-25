@@ -7,11 +7,12 @@ import { once } from 'node:events';
 import Stripe from 'stripe';
 import { createAccountStore } from '../docker/accounts.mjs';
 import { createGateway } from '../docker/gateway.mjs';
+import { createResetEmailSender } from '../docker/reset-email.mjs';
 
 const password = 'correct horse battery staple', webhookSecret = 'whsec_local_fixture';
-async function fixture(t, { googleEnabled = true, stripeEnabled = true } = {}) {
+async function fixture(t, { googleEnabled = true, stripeEnabled = true, resetEnabled = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ownly-auth-'));
-  const accounts = createAccountStore(dir), calls = [], checkouts = new Map(), subscriptions = new Map();
+  const accounts = createAccountStore(dir), calls = [], emails = [], checkouts = new Map(), subscriptions = new Map();
   const signer = new Stripe('sk_test_fixture');
   let googleIdentity = { sub: 'google-person-1', email: 'google@example.test', email_verified: true, name: 'Google Person' }, oauthParams;
   const google = {
@@ -38,6 +39,7 @@ async function fixture(t, { googleEnabled = true, stripeEnabled = true } = {}) {
   const server = createGateway({ runtime, accounts, origin: 'http://ownly.test', adminEmail: 'owner@example.test', adminPassword: password, token: 'local-collector-secret-1234567890123456789',
     stripe: stripeEnabled ? stripe : null, webhookSecret, priceIds: { individual: 'price_individual', portfolio: 'price_portfolio' },
     googleClientId: 'google-test-client', googleClient: googleEnabled ? google : null,
+    sendResetEmail: resetEnabled ? async message => { emails.push(message); } : null,
     queue: { list: () => ({ searches: [] }) },
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -57,7 +59,7 @@ async function fixture(t, { googleEnabled = true, stripeEnabled = true } = {}) {
   }
   async function register(client, email = 'person@example.test') {
     await client.request('/register?plan=portfolio');
-    const result = await client.request('/register', { form: { email, password, plan: 'portfolio' } });
+    const result = await client.request('/register', { form: { email, password, confirm_password: password, plan: 'portfolio' } });
     assert.equal(result.status, 303); assert.match(result.location, /^\/onboarding/);
     return accounts.byEmail(email);
   }
@@ -72,7 +74,7 @@ async function fixture(t, { googleEnabled = true, stripeEnabled = true } = {}) {
     subscriptions.set(checkout.subscription, { id: checkout.subscription, status, customer: checkout.customer, metadata: { account_id: account.id }, trial_start: Math.floor(Date.now() / 1000), trial_end: Math.floor(Date.now() / 1000) + 7 * 86400, items: { data: [{ price: { id: 'price_portfolio' } }] } });
     return checkout;
   }
-  return { browser, accounts, calls, checkouts, subscriptions, forwarded, register, webhook, completeCheckout, identity: value => { googleIdentity = value; } };
+  return { browser, accounts, calls, emails, checkouts, subscriptions, forwarded, register, webhook, completeCheckout, identity: value => { googleIdentity = value; } };
 }
 
 test('account is mandatory; registration persists without starting a trial; duplicate signup cannot reset a password', async t => {
@@ -85,7 +87,7 @@ test('account is mandatory; registration persists without starting a trial; dupl
   assert.equal((await client.request('/api/properties')).status, 402);
   assert.match((await client.request('/dashboard')).location, /^\/onboarding/);
   const stranger = f.browser(); await stranger.request('/register');
-  assert.equal((await stranger.request('/register', { form: { email: account.email, password: 'attacker-password-1234' } })).status, 409);
+  assert.equal((await stranger.request('/register', { form: { email: account.email, password: 'attacker-password-1234', confirm_password: 'attacker-password-1234' } })).status, 409);
   assert.ok(f.accounts.verify(f.accounts.byId(account.id), password));
   assert.equal(f.accounts.all().length, 1); assert.equal(f.forwarded.length, 0);
 });
@@ -103,6 +105,62 @@ test('forms reject CSRF and offsite redirects; login works for unpaid and cancel
   assert.match((await other.request('/billing/portal')).location, /^https:\/\/billing.stripe.com/);
   await other.request('/account/access'); await other.request('/logout', { form: {} });
   assert.equal((await other.request('/api/properties')).status, 401);
+});
+
+test('pricing selection carries through email login and Google sign-up', async t => {
+  const f = await fixture(t), first = f.browser();
+  const account = await f.register(first);
+  const returning = f.browser();
+  const loginPage = await returning.request('/login?plan=individual');
+  assert.match(loginPage.text, /Continue with Google/);
+  assert.match(loginPage.text, /name="plan" value="individual"/);
+  const login = await returning.request('/login', { form: { email: account.email, password, plan: 'individual' } });
+  assert.equal(new URL(login.location, 'http://ownly.test').searchParams.get('plan'), 'individual');
+
+  const newcomer = f.browser();
+  const signupPage = await newcomer.request('/register?plan=portfolio');
+  assert.match(signupPage.text, /Continue with Google/);
+  assert.match(signupPage.text, /7-day free trial/);
+  const googleStart = await newcomer.request('/auth/google?plan=portfolio&register=1');
+  const state = new URL(googleStart.location).searchParams.get('state');
+  const googleSignup = await newcomer.request('/auth/google/callback?code=ok&state=' + state);
+  assert.equal(new URL(googleSignup.location, 'http://ownly.test').searchParams.get('plan'), 'portfolio');
+  assert.equal(f.accounts.byEmail('google@example.test').plan, 'portfolio');
+});
+
+test('password reset is single use, validates confirmation, and expires existing sessions', async t => {
+  const f = await fixture(t), client = f.browser();
+  const account = await f.register(client);
+  const session = await client.request('/auth/session');
+  assert.equal(JSON.parse(session.text).email, account.email);
+  const visitor = f.browser();
+  await visitor.request('/forgot-password?plan=individual');
+  assert.equal((await visitor.request('/forgot-password', { form: { email: 'unknown@example.test' } })).status, 200);
+  assert.equal(f.emails.length, 0);
+  assert.equal((await visitor.request('/forgot-password', { form: { email: account.email, plan: 'individual' } })).status, 200);
+  assert.equal(f.emails.length, 1);
+  assert.equal(f.emails[0].plan, 'individual');
+  const token = f.emails[0].token, newPassword = 'a different secure password';
+  assert.equal((await visitor.request('/reset-password?token=' + token)).status, 200);
+  assert.match((await visitor.request('/reset-password', { form: { token, password: newPassword, confirm_password: 'mismatch password' } })).text, /Passwords do not match|make sure both passwords match/);
+  const reset = await visitor.request('/reset-password', { form: { token, password: newPassword, confirm_password: newPassword, plan: 'individual' } });
+  assert.equal(new URL(reset.location, 'http://ownly.test').searchParams.get('plan'), 'individual');
+  assert.equal(JSON.parse((await client.request('/auth/session')).text).authenticated, false);
+  assert.equal((await visitor.request('/reset-password?token=' + token)).status, 400);
+  const fresh = f.browser(); await fresh.request('/login');
+  assert.equal((await fresh.request('/login', { form: { email: account.email, password: newPassword } })).status, 303);
+});
+
+test('password reset email uses the configured sender and embeds the reset link', async () => {
+  let request;
+  const send = createResetEmailSender({ apiKey: 're_fixture', from: 'Ownly <accounts@example.test>', origin: 'https://ownly.test', fetcher: async (url, init) => { request = { url, init }; return { ok: true }; } });
+  await send({ email: 'person@example.test', token: 'fixture-token', plan: 'portfolio', next: '/dashboard' });
+  assert.equal(request.url, 'https://api.resend.com/emails');
+  assert.equal(request.init.headers.Authorization, 'Bearer re_fixture');
+  const body = JSON.parse(request.init.body);
+  assert.equal(body.to[0], 'person@example.test');
+  assert.match(body.html, /https:\/\/ownly\.test\/reset-password\?token=fixture-token/);
+  assert.match(body.html, /plan=portfolio/);
 });
 
 test('authenticated checkout is reused; success URL cannot sign in; only signed webhook grants access; expired trial loses access', async t => {
@@ -155,13 +213,13 @@ test('Google requires matching browser state, verified email and nonce; callback
   assert.equal(f.accounts.all().length, 1);
 });
 
-test('Google cannot take over matching email; an authenticated user can link and return to the same account', async t => {
+test('verified Google email signs into the existing account without a duplicate', async t => {
   const f = await fixture(t), emailUser = f.browser(), account = await f.register(emailUser, 'google@example.test'), googleUser = f.browser();
   let result = await googleUser.request('/auth/google'), state = new URL(result.location).searchParams.get('state');
-  assert.match((await googleUser.request('/auth/google/callback?code=ok&state=' + state)).location, /email_exists/);
-  assert.equal(f.accounts.byId(account.id).googleId, null);
-  result = await emailUser.request('/auth/google?link=1'); state = new URL(result.location).searchParams.get('state');
-  assert.equal((await emailUser.request('/auth/google/callback?code=ok&state=' + state)).location, '/account/access?linked=1');
+  assert.match((await googleUser.request('/auth/google/callback?code=ok&state=' + state)).location, /^\/onboarding/);
+  assert.equal(f.accounts.byId(account.id).googleId, 'google-person-1');
+  assert.equal(f.accounts.all().length, 1);
+  await googleUser.request('/account/access'); await googleUser.request('/logout', { form: {} });
   result = await googleUser.request('/auth/google'); state = new URL(result.location).searchParams.get('state');
   assert.match((await googleUser.request('/auth/google/callback?code=ok&state=' + state)).location, /^\/onboarding/);
   assert.equal(f.accounts.all().length, 1); assert.equal(f.accounts.byGoogleId('google-person-1').id, account.id);
@@ -178,7 +236,7 @@ test('missing provider configuration keeps email registration usable and never s
 
 test('owner login remains available and cannot be impersonated by Google or email signup', async t => {
   const f = await fixture(t), owner = f.browser(); await owner.request('/register');
-  assert.equal((await owner.request('/register', { form: { email: 'owner@example.test', password } })).status, 409);
+  assert.equal((await owner.request('/register', { form: { email: 'owner@example.test', password, confirm_password: password } })).status, 409);
   await owner.request('/login'); assert.equal((await owner.request('/login', { form: { email: 'owner@example.test', password, next: '/admin/airbnb' } })).location, '/admin/airbnb');
   assert.equal((await owner.request('/api/admin/airbnb-jobs')).status, 200);
   f.identity({ sub: 'google-owner', email: 'owner@example.test', email_verified: true });

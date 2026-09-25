@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Brand,{BrandMark} from './components/Brand';
 
 const Arrow = () => <span aria-hidden="true">→</span>;
+type HeaderSession = { authenticated: true; name: string; email: string; csrf: string; destination: string } | { authenticated: false };
 
 function DashboardPreview() {
   return (
@@ -39,6 +40,16 @@ export default function Home() {
   const [menuOpen,setMenuOpen]=useState(false);
   const [openFaq,setOpenFaq]=useState(0);
   const [videoOpen,setVideoOpen]=useState(false);
+  const [headerSession,setHeaderSession]=useState<HeaderSession|null>(null);
+
+  useEffect(()=>{
+    const controller=new AbortController();
+    fetch('/auth/session',{credentials:'same-origin',cache:'no-store',signal:controller.signal})
+      .then(async response=>{if(!response.ok)throw Error('Session unavailable');return await response.json() as HeaderSession})
+      .then(session=>setHeaderSession(session))
+      .catch(()=>{if(!controller.signal.aborted)setHeaderSession({authenticated:false})});
+    return ()=>controller.abort();
+  },[]);
 
   useEffect(()=>{
     if(!videoOpen) return;
@@ -57,7 +68,7 @@ export default function Home() {
       <nav className="nav wrap">
         <Brand href="#top" />
         <button className="menu" onClick={()=>setMenuOpen(!menuOpen)} aria-expanded={menuOpen} aria-label="Toggle navigation">Menu</button>
-        <div className={`nav-links ${menuOpen?'open':''}`}><a href="#product">Product</a><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a><a className="login" href="/login?next=%2Fdashboard">Log in</a><a className="button small" href="#pricing">Explore plans <Arrow /></a></div>
+        <div className={`nav-links ${menuOpen?'open':''}`}><a href="#product">Product</a><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a>{headerSession?.authenticated?<div className="nav-auth"><a className="nav-login nav-profile" href={headerSession.destination} title={headerSession.email}>{headerSession.name}</a><form method="post" action="/logout"><input type="hidden" name="csrf" value={headerSession.csrf}/><button className="button small" type="submit">Log Out</button></form></div>:<div className="nav-auth"><a className="nav-login" href="/login?next=%2Fdashboard">Log In</a><a className="button small" href="/register?next=%2Fdashboard">Sign Up</a></div>}</div>
       </nav>
       <section className="hero wrap" id="top">
         <div className="hero-copy"><div className="pill"><i /> For property owners and subletters in Malta</div><h1>Know what your property is <em>really</em> earning.</h1><p>Track income, expenses, mortgages, cash flow and long-term returns in one clear dashboard.</p><div className="hero-actions"><a className="button" href="#pricing">Explore plans <Arrow /></a><button className="text-link video-trigger" type="button" onClick={()=>setVideoOpen(true)}><span>▶</span> See how it works</button></div><small className="reassurance">Account required · 7-day free trial · Made for Malta</small></div>
@@ -74,8 +85,8 @@ export default function Home() {
       </div></div></section>
       <section className="section insight-section"><div className="wrap insight-grid"><div className="insight-card"><span>YOUR MONTHLY INSIGHT</span><div className="insight-number">€1,284</div><p>positive net cash flow</p><hr/><div className="insight-stats"><div><b>33.4%</b><span>Profit margin</span></div><div><b>6.8%</b><span>Cash-on-cash</span></div><div><b>€183k</b><span>Est. equity</span></div></div></div><div className="insight-copy"><span className="kicker">CLARITY AT A GLANCE</span><h2>Know what is working—and what is costing you.</h2><p>Ownly turns a long list of transactions into a calm, decision-ready view of each property and your portfolio as a whole.</p><ul><li><i>✓</i> Separate operating costs from mortgage payments</li><li><i>✓</i> Compare actuals with your original estimates</li><li><i>✓</i> Track debt, equity and total return over time</li></ul></div></div></section>
       <section className="section pricing-section" id="pricing"><div className="section-head"><span className="kicker">SIMPLE PRICING</span><h2>One property or a growing portfolio.</h2><p>Create your account with Google or email, choose a plan, and activate your 7-day free trial.</p></div><div className="pricing-grid wrap">
-        <article><span className="plan">INDIVIDUAL</span><h3>€9<span>/month</span></h3><p>For owners and subletters managing one to three properties.</p><ul><li>Up to 3 properties</li><li>Income and expense tracking</li><li>Cash-flow dashboard</li><li>Long-term projections</li></ul><a className="outline-button" href="/register?plan=individual">Create account & start trial</a></article>
-        <article className="popular"><div className="popular-label">MOST POPULAR</div><span className="plan">PORTFOLIO</span><h3>€25<span>/month</span></h3><p>For investors and managers with a growing portfolio.</p><ul><li>Up to 15 properties</li><li>Everything in Individual</li><li>Portfolio-level dashboard</li><li>Priority support</li></ul><a className="button" href="/register?plan=portfolio">Create account & start trial <Arrow /></a></article>
+        <article><span className="plan">INDIVIDUAL</span><span className="free-trial">7-Day Free Trial</span><h3>€9<span>/month</span></h3><p>For owners and subletters managing one to three properties.</p><ul><li>Up to 3 properties</li><li>Income and expense tracking</li><li>Cash-flow dashboard</li><li>Long-term projections</li></ul><a className="outline-button" href="/register?plan=individual">Start 7-Day Free Trial</a><p className="plan-login">Already have an account? <a href="/login?plan=individual">Log In</a></p></article>
+        <article className="popular"><div className="popular-label">MOST POPULAR</div><span className="plan">PORTFOLIO</span><span className="free-trial">7-Day Free Trial</span><h3>€25<span>/month</span></h3><p>For investors and managers with a growing portfolio.</p><ul><li>Up to 15 properties</li><li>Everything in Individual</li><li>Portfolio-level dashboard</li><li>Priority support</li></ul><a className="button" href="/register?plan=portfolio">Start 7-Day Free Trial</a><p className="plan-login">Already have an account? <a href="/login?plan=portfolio">Log In</a></p></article>
       </div><p className="pricing-note">Stripe charges the selected monthly plan when the trial ends unless you cancel beforehand.</p></section>
       <section className="section faq-section" id="faq"><div className="wrap faq-grid"><div><span className="kicker">QUESTIONS, ANSWERED</span><h2>Everything you need to get started.</h2><p>Still unsure? <a href="mailto:hello@clearyield.app">Talk to us</a> and we’ll help.</p></div><div className="faq-list">{faqs.map(([q,a],i)=><article key={q} className={openFaq===i?'open':''}><button onClick={()=>setOpenFaq(openFaq===i?-1:i)} aria-expanded={openFaq===i}><span>{q}</span><b>{openFaq===i?'−':'+'}</b></button>{openFaq===i&&<p>{a}</p>}</article>)}</div></div></section>
       <section className="cta-section"><div className="wrap"><span className="kicker light">YOUR PROPERTY. ONE CLEAR ANSWER.</span><h2>Find out what your property is really earning.</h2><p>Create your first property and see your estimated net cash flow in under five minutes.</p><a className="button light-button" href="#pricing">Explore the plans <Arrow /></a></div></section>
