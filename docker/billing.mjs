@@ -74,7 +74,7 @@ export function createBilling({ origin, stripe, stripeReady, webhookSecret, pric
       }
       if (req.method === 'POST' && url.pathname === '/checkout') {
         const input = await readForm(req), planId = input.get('plan'), next = safeNext(input.get('next'));
-        if (!sessions.verifyForm(req, input)) { onboarding(req, res, account, { error: 'Your form expired. Please try again.', status: 403, next }); return true; }
+        if (!sessions.verifyForm(req, input)) { onboarding(req, res, account, { plan: getPlan(planId) ? planId : account.plan, error: 'We refreshed this form. Your plan is still selected; click the button again to continue.', status: 403, next }); return true; }
         if (hasProductAccess(account)) { redirect(res, next); return true; }
         if (account.stripeSubscriptionId && !['canceled', 'incomplete_expired'].includes(account.status)) { redirect(res, '/billing/portal'); return true; }
         if (!stripeReady || !getPlan(planId)) { onboarding(req, res, account, { error: 'This plan is currently unavailable. Your account is saved.', status: 503, next }); return true; }

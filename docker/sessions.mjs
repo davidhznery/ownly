@@ -11,6 +11,7 @@ export function createSessions({ password, token, email, origin, accounts, now =
   // Keep the existing key derivation and session format to preserve customer sessions.
   const key = createHash('sha256').update(password + '\0' + token).digest();
   const lifetime = 7 * 86400000;
+  const formLifetime = lifetime;
   const sign = value => createHmac('sha256', key).update(value).digest('hex');
   const cookie = (name, value, maxAge) => `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; ${origin.startsWith('https://') ? 'Secure; ' : ''}Max-Age=${maxAge}`;
   function issue(subject) { const payload = `${now() + lifetime}.${subject}`; return cookie('ownly_session', `${payload}.${sign(payload)}`, lifetime / 1000); }
@@ -27,8 +28,8 @@ export function createSessions({ password, token, email, origin, accounts, now =
   }
   function form(req) {
     let value = cookieValue(req.headers.cookie, 'ownly_form');
-    if (!validForm(value)) { const payload = `${now() + 3600000}.${randomBytes(32).toString('hex')}`; value = `${payload}.${sign('form:' + payload)}`; }
-    return { value, cookie: cookie('ownly_form', value, 3600) };
+    if (!validForm(value)) { const payload = `${now() + formLifetime}.${randomBytes(32).toString('hex')}`; value = `${payload}.${sign('form:' + payload)}`; }
+    return { value, cookie: cookie('ownly_form', value, formLifetime / 1000) };
   }
   function verifyForm(req, input) {
     const value = input.get('csrf');
