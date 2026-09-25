@@ -107,6 +107,20 @@ test('forms reject CSRF and offsite redirects; login works for unpaid and cancel
   assert.equal((await other.request('/api/properties')).status, 401);
 });
 
+test('authenticated checkout works without a separate form cookie and rejects forged or cross-site requests', async t => {
+  const f = await fixture(t), client = f.browser();
+  await f.register(client);
+  await client.request('/onboarding?plan=individual');
+  client.cookies.delete('ownly_form');
+  assert.equal((await client.request('/checkout', { form: { plan: 'individual', csrf: 'forged' } })).status, 403);
+  await client.request('/onboarding?plan=individual');
+  assert.equal((await client.request('/checkout', { form: { plan: 'individual' }, headers: { Origin: 'https://evil.test', 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
+  await client.request('/onboarding?plan=individual');
+  const start = await client.request('/checkout', { form: { plan: 'individual' } });
+  assert.match(start.location, /^https:\/\/checkout.stripe.com/);
+  assert.equal(f.calls.length, 1);
+});
+
 test('pricing selection carries through email login and Google sign-up', async t => {
   const f = await fixture(t), first = f.browser();
   const account = await f.register(first);

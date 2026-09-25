@@ -22,18 +22,27 @@ export function createSessions({ password, token, email, origin, accounts, now =
     const account = accounts.byId(match[2]);
     return account && (!account.passwordChangedAt || Number(match[1]) - lifetime >= account.passwordChangedAt) ? account : null;
   }
-  function validForm(value) {
+  function validForm(value, session = '') {
     const match = /^(\d{13})\.([a-f0-9]{64})\.([a-f0-9]{64})$/.exec(value || '');
-    return Boolean(match && Number(match[1]) > now() && equal(match[3], sign(`form:${match[1]}.${match[2]}`)));
+    return Boolean(match && Number(match[1]) > now() && equal(match[3], sign(`${session ? `session-form:${session}:` : 'form:'}${match[1]}.${match[2]}`)));
   }
   function form(req) {
+    const session = get(req.headers.cookie) ? cookieValue(req.headers.cookie, 'ownly_session') : '';
+    if (session) {
+      const payload = `${now() + formLifetime}.${randomBytes(32).toString('hex')}`;
+      return { value: `${payload}.${sign(`session-form:${session}:${payload}`)}`, cookie: cookie('ownly_form', '', 0) };
+    }
     let value = cookieValue(req.headers.cookie, 'ownly_form');
     if (!validForm(value)) { const payload = `${now() + formLifetime}.${randomBytes(32).toString('hex')}`; value = `${payload}.${sign('form:' + payload)}`; }
     return { value, cookie: cookie('ownly_form', value, formLifetime / 1000) };
   }
   function verifyForm(req, input) {
     const value = input.get('csrf');
-    return (!req.headers.origin || req.headers.origin === origin) && validForm(value) && equal(value, cookieValue(req.headers.cookie, 'ownly_form'));
+    const sameOrigin = !req.headers.origin || req.headers.origin === origin || req.headers['sec-fetch-site'] === 'same-origin';
+    if (!sameOrigin || req.headers['sec-fetch-site'] === 'cross-site') return false;
+    const session = get(req.headers.cookie) ? cookieValue(req.headers.cookie, 'ownly_session') : '';
+    if (session) return validForm(value, session);
+    return validForm(value) && equal(value, cookieValue(req.headers.cookie, 'ownly_form'));
   }
   return { get, issue, form, verifyForm, cookie, clear: () => cookie('ownly_session', '', 0) };
 }
