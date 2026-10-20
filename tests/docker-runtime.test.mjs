@@ -17,5 +17,8 @@ test('real runtime: queued capture -> application import -> persistent results a
  await mf.dispose();mf=await createRuntime({dataDir:dir,adminEmail:email});
  const params=new URLSearchParams({area:"St. Paul's Bay",checkin:'2026-09-25',checkout:'2026-09-27',adults:'4',bedrooms:'2'});
  response=await mf.dispatchFetch('http://localhost/api/admin/airbnb?'+params,{headers});const data=await response.json();assert.equal(response.status,200);assert.equal(data.rows.length,31);assert.equal(data.totalStored,50);assert.equal(data.rows[15].total_cents/100/data.rows[15].nights,166.5);
+ const marketParams=new URLSearchParams({locality:"St. Paul's Bay",bedrooms:'2',propertyType:'apartment',start:'2026-09-20',end:'2026-09-26'});
+ response=await mf.dispatchFetch('http://localhost/api/market?'+marketParams,{headers});assert.equal(response.status,200);const market=await response.json();assert.equal(market.listingSummary.count,30);assert.deepEqual(market.listingSummary.period,{start:'2026-09-16',end:'2026-09-30'});assert.equal(market.listingSummary.adults,4);assert.equal(market.listingSummary.indicative,true);
+ marketParams.set('start','2026-09-22');marketParams.set('end','2026-09-28');response=await mf.dispatchFetch('http://localhost/api/market?'+marketParams,{headers});const overlap=await response.json();assert.deepEqual(overlap.listingSummary,market.listingSummary);
  }finally{await mf.dispose();fs.rmSync(dir,{recursive:true,force:true});}
 });

@@ -12,7 +12,7 @@ const d1={prepare:sql=>wrap(sql),batch:async statements=>Promise.all(statements.
 function load(file,deps){const exports={};vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL(file,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,process,crypto:globalThis.crypto,URL,require:name=>{if(!(name in deps))throw Error(name);return deps[name]}});return exports;}
 const queries=load('../db/queries.ts',{'cloudflare:workers':{env:{DB:d1}}});
 let user={userId:'first',email:'first@example.test'};
-const api=load('../app/api/properties/route.ts',{'next/server':{NextResponse:Response},'@/app/chatgpt-auth':{getChatGPTUser:async()=>user},'@/db/queries':queries,'@/lib/localities':{canonicalLocality}});
+const api=load('../app/api/properties/route.ts',{'next/server':{NextResponse:Response},'next/headers':{headers:async()=>new Headers()},'@/app/chatgpt-auth':{getChatGPTUser:async()=>user},'@/db/queries':queries,'@/lib/localities':{canonicalLocality}});
 const request=(body)=>new Request('http://localhost/api/properties',{method:'POST',body:JSON.stringify(body)});
 test('old schema migrates, optional prices save, sublet rent survives edits, and ownership is enforced',async()=>{
  db.exec(fs.readFileSync(new URL('../drizzle/0000_kind_warstar.sql',import.meta.url),'utf8'));

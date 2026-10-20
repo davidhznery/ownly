@@ -10,3 +10,4 @@ dist
 *.tar.gz
 *.zip
 collector/node_modules
+Local

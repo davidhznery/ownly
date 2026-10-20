@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import {searchLocation} from '../lib/airbnb/locations.mjs';
 const root=path.dirname(fileURLToPath(import.meta.url));
-const AREAS={"St. Paul's Bay":"St.-Paul’s-Bay--Malta",Sliema:'Sliema--Malta',"St. Julian's":"Saint-Julian’s--Malta",Valletta:'Valletta--Malta'};
 
 async function main(){
   const q=JSON.parse(fs.readFileSync(0,'utf8'));
-  if(!Object.hasOwn(AREAS,q.area)) throw Error('Unsupported area');
+  const location=searchLocation(q.area);
   for(const [k,min,max] of [['adults',1,16],['bedrooms',1,10],['pages',1,5]])
     if(!Number.isInteger(q[k])||q[k]<min||q[k]>max) throw Error(`Invalid ${k}`);
   for(const key of ['checkin','checkout']) if(!/^\d{4}-\d{2}-\d{2}$/.test(q[key]))throw Error('Invalid date');
@@ -19,7 +19,7 @@ async function main(){
   const extractor=vm.runInNewContext(fs.readFileSync(path.join(root,'extract-airbnb.js'),'utf8')+'\nextractAirbnbPage;');
   const captures=[],errors=[];
   const p=new URLSearchParams({checkin:q.checkin,checkout:q.checkout,adults:String(q.adults),min_bedrooms:String(q.bedrooms),currency:'EUR',locale:'en'});
-  const url='https://www.airbnb.com/s/'+encodeURIComponent(AREAS[q.area])+'/homes?'+p;
+  const url='https://www.airbnb.com/s/'+encodeURIComponent(location)+'/homes?'+p;
   let previousFingerprint=null;
   try{
     await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});

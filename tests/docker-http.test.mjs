@@ -9,6 +9,8 @@ import {once} from 'node:events';
 test('Docker gateway: owner login, background queue, real persistence and no collector exposure',{timeout:20000},async()=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ownly-http-'));
  const captures=[1,2,3,4,5].map(n=>JSON.parse(fs.readFileSync(`lib/airbnb/airbnb-live-2026-09-18-page${n}.json`,'utf8')));
+ const checkin=new Date(Date.now()+3*86400000).toISOString().slice(0,10),checkout=new Date(Date.now()+5*86400000).toISOString().slice(0,10);
+ for(const capture of captures){const old={...capture.query};for(const card of capture.cards){if(card.checkin===old.checkin)card.checkin=checkin;if(card.checkout===old.checkout)card.checkout=checkout;}Object.assign(capture.query,{checkin,checkout});}
  const collector=http.createServer((req,res)=>{assert.equal(req.headers.authorization,'Bearer test-collector-secret-long-enough-123456789');res.setHeader('Content-Type','application/json');res.end(JSON.stringify({captures}));});collector.listen(0,'127.0.0.1');await once(collector,'listening');
  const reservation=http.createServer();reservation.listen(0,'127.0.0.1');await once(reservation,'listening');const port=reservation.address().port;await new Promise(r=>reservation.close(r));
  const base=`http://127.0.0.1:${port}`;const auth='Basic '+Buffer.from('owner@example.test:test-owner-password-123456789').toString('base64');
@@ -27,7 +29,9 @@ test('Docker gateway: owner login, background queue, real persistence and no col
  const created=await fetch(base+'/api/admin/airbnb-jobs',{method:'POST',headers,body:JSON.stringify({action:'create',query:{area:"St. Paul's Bay",...captures[0].query,pages:5},intervalDays:0})});assert.equal(created.status,201);
  let run;for(let i=0;i<20;i++){const data=await (await fetch(base+'/api/admin/airbnb-jobs',{headers})).json();run=data.runs[0];if(run.status==='completed')break;await new Promise(r=>setTimeout(r,250));}
  assert.equal(run.status,'completed',JSON.stringify(run));assert.equal(run.inserted,50);
- const params=new URLSearchParams({area:"St. Paul's Bay",checkin:'2026-09-25',checkout:'2026-09-27',adults:'4',bedrooms:'2'});
+ const params=new URLSearchParams({area:"St. Paul's Bay",checkin,checkout,adults:'4',bedrooms:'2'});
  const data=await (await fetch(base+'/api/admin/airbnb?'+params,{headers})).json();assert.equal(data.rows.length,31);
+ const coverageResponse=await fetch(base+'/api/admin/airbnb-jobs',{method:'POST',headers,body:JSON.stringify({action:'coverage-start',scope:'priority',dailyBudget:20})});assert.equal(coverageResponse.status,200);const coverage=(await coverageResponse.json()).coverage;assert.equal(coverage.cells.length,20);assert.equal(coverage.totalLocalities,68);
+ assert.equal((await fetch(base+'/api/admin/airbnb-jobs',{method:'POST',headers,body:JSON.stringify({action:'coverage-pause'})})).status,200);
  }finally{if(child.exitCode===null&&child.signalCode===null){const exited=once(child,'exit');child.kill('SIGTERM');await exited;}await new Promise(r=>collector.close(r));fs.rmSync(dir,{recursive:true,force:true});}
 });

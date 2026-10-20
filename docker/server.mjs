@@ -15,6 +15,20 @@ fs.mkdirSync(dataDir, { recursive: true });
 const mf = await createRuntime({ dataDir, adminEmail: email });
 const accounts = createAccountStore(dataDir), idHeaders = identityHeaders(email);
 const queue = new JobQueue(path.join(dataDir, 'jobs.sqlite'), {
+  coverageSamples: async cells => {
+    const samples=[];
+    for(let offset=0;offset<cells.length;offset+=5){
+      const results=await Promise.allSettled(cells.slice(offset,offset+5).map(async cell=>{
+        const params=new URLSearchParams({locality:cell.area,bedrooms:String(queue.coverage.settings().bedrooms),adults:'4',propertyType:'apartment',start:cell.start,end:cell.end});
+        const response=await mf.dispatchFetch('http://ownly.internal/api/market?'+params,{headers:idHeaders});
+        if(!response.ok)return null;const data=await response.json(),summary=data.listingSummary;
+        if(!summary||summary.stale||summary.count<5)return null;
+        return {id:cell.id,matched:summary.count,refreshed:Date.parse(summary.oldestObservation)};
+      }));
+      for(const result of results)if(result.status==='fulfilled'&&result.value)samples.push(result.value);
+    }
+    return samples;
+  },
   collect: async query => {
     const response = await fetch((process.env.COLLECTOR_URL || 'http://collector:8080') + '/collect', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(query), signal: AbortSignal.timeout(150000) });
     const data = await response.json(); if (!response.ok) throw Error(data.errors?.join(' ') || data.error || `Collector error ${response.status}`); return data;

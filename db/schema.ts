@@ -24,5 +24,6 @@ export const userProfiles=sqliteTable('user_profiles',{
 });
 
 export const airbnbObservations=sqliteTable('airbnb_observations',{
+ provider:text('provider').notNull().default('airbnb'),sourceDetails:text('source_details').notNull().default('{}'),reviewReason:text('review_reason').notNull().default(''),
  id:text('id').primaryKey(),listingId:text('listing_id').notNull(),name:text('name').notNull(),url:text('url').notNull(),locality:text('locality').notNull(),propertyType:text('property_type').notNull(),bedrooms:integer('bedrooms').notNull(),adults:integer('adults').notNull(),checkin:text('checkin').notNull(),checkout:text('checkout').notNull(),nights:integer('nights').notNull(),totalCents:integer('total_cents').notNull(),observedAt:text('observed_at').notNull(),importedBy:text('imported_by').notNull()
 },table=>[index('idx_airbnb_search').on(table.locality,table.bedrooms,table.adults,table.checkin,table.checkout)]);

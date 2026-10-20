@@ -1,6 +1,7 @@
-export const areas = ["St. Paul's Bay", 'Sliema', "St. Julian's", 'Valletta'] as const;
+import {areas,listingLocality} from './locations.mjs';
+export {areas};
 export type Query = {area:string; checkin:string; checkout:string; adults:number; bedrooms:number; pages:number};
-export type Quote = {listingId:string; name:string; url:string; locality:string; propertyType:string; bedrooms:number; adults:number; checkin:string; checkout:string; nights:number; totalCents:number; observedAt:string};
+export type Quote = {listingId:string; name:string; url:string; locality:string; propertyType:string; bedrooms:number; adults:number; checkin:string; checkout:string; nights:number; totalCents:number; observedAt:string;provider?:'airbnb'|'booking';sourceDetails?:Record<string,unknown>;reviewReason?:string};
 export function validDate(s:unknown):s is string {return typeof s==='string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0,10)===s;}
 export function validateQuery(input:unknown):Query {
   const q=input as Query;
@@ -11,10 +12,7 @@ export function validateQuery(input:unknown):Query {
   return {area:q.area,checkin:q.checkin,checkout:q.checkout,adults:q.adults,bedrooms:q.bedrooms,pages:q.pages};
 }
 export function locality(value:string){
-  const key=value.toLowerCase().replaceAll('ħ','h').normalize('NFD').replace(/[^a-z0-9]/g,'');
-  if(['sanpawlilbahar','stpaulsbay','saintpaulsbay'].includes(key))return "St. Paul's Bay";
-  if(['stjulians','saintjulians','sangiljan'].includes(key))return "St. Julian's";
-  return value.trim();
+  return listingLocality(value);
 }
 export function normalizeCapture(input:unknown):{quotes:Quote[]; rejected:number} {
   const c=input as Record<string,unknown>;

@@ -1,0 +1,9 @@
+# Importar precios sin esperar al recolector
+
+En `/admin/airbnb`, el bloque **Expand your market data now** permite descargar una plantilla JSON, validar el archivo y añadir hasta 1.000 observaciones por archivo (1,9 MB). Acepta un objeto con `observations` o un array de observaciones. La plantilla incluye todas las localidades admitidas. Sus valores de ejemplo son inválidos deliberadamente: hay que sustituirlos por datos reales.
+
+Cada observación necesita `listing_id` (texto), `name`, `url` de Airbnb que coincida con el ID, `locality`, `property_type`, `bedrooms`, `adults`, `checkin`, `checkout`, `total_cents` y `observed_at`. El total es el precio anunciado de toda la estancia en céntimos de EUR; no es el precio por noche. Las fechas de estancia usan YYYY-MM-DD y la observación un timestamp ISO con zona horaria. No se admiten monedas diferentes de EUR. Las noches se calculan automáticamente.
+
+La validación se ejecuta en el servidor antes de guardar y se repite al importar. Un error indica la fila y bloquea el archivo completo. Los datos se añaden a `airbnb_observations` usando la misma clave de observación y operación transaccional que las capturas del recolector. Reimportar el mismo anuncio, estancia, huéspedes y timestamp no lo duplica. Una observación más reciente queda como histórico y pasa a representar el anuncio en las consultas correspondientes. No modifica las búsquedas programadas.
+
+El panel muestra localidades con observaciones, localidades pendientes y fecha de la última observación por localidad. Esta cobertura indica presencia de datos, no disponibilidad de precios para todas las fechas y filtros. El listado del administrador requiere fechas y huéspedes exactos; Local Market aplica sus filtros de localidad, tipo, dormitorios, huéspedes y periodo. La importación no fabrica precios ni garantiza cobertura completa: requiere datos reales de cada localidad.

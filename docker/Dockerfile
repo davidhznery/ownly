@@ -12,7 +12,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/docker ./docker
-COPY --from=build /app/lib/airbnb/normalize.ts ./lib/airbnb/normalize.ts
+COPY --from=build /app/lib ./lib
 RUN mkdir /data && chown node:node /data
 USER node
 ENV NODE_ENV=production DATA_DIR=/data PORT=3000

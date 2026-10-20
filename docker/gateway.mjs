@@ -42,7 +42,7 @@ export function createGateway({ runtime, accounts, queue, publicAssets = new Set
       }
       if (url.pathname === '/api/admin/airbnb-jobs') {
         if (req.method === 'GET') json(200, queue.list());
-        else if (req.method === 'POST') { const value = JSON.parse(body.toString()); if (value.action === 'create') json(201, { id: queue.add(value) }); else { queue.update(value.id, value.action); json(200, { ok: true }); } }
+        else if (req.method === 'POST') { const value = JSON.parse(body.toString()); if (value.action?.startsWith('coverage-')) { queue.coverage.configure(value); json(200, { ok:true,coverage:queue.coverage.list() }); } else if (value.action === 'create') json(201, { id: queue.add(value) }); else { queue.update(value.id, value.action); json(200, { ok: true }); } }
         else json(405, { error: 'Method not allowed' });
         return;
       }

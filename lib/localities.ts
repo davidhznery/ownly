@@ -17,7 +17,7 @@ const ALIASES:Record<string,string> = {
   sanpawlilbahar:"St. Paul's Bay", saintpaulsbay:"St. Paul's Bay", stpaulsbay:"St. Paul's Bay",
   qawra:"St. Paul's Bay", bugibba:"St. Paul's Bay", sanġiljan:"St. Julian's",
   sangiljan:"St. Julian's", saintjulians:"St. Julian's", stjulians:"St. Julian's",
-  tassliema:"Sliema", illbeltvalletta:"Valletta", beltvalletta:"Valletta",
+  tassliema:"Sliema", ilbeltvalletta:"Valletta", illbeltvalletta:"Valletta", beltvalletta:"Valletta",
   mosta:"Mosta", ilmellieha:"Mellieħa", gzira:"Gżira", ilgzira:"Gżira"
 };
 
@@ -28,6 +28,12 @@ lookup.set(key('Rabat'), 'Rabat (Malta)');
 lookup.set(key('Victoria, Gozo'), 'Rabat (Gozo)');
 lookup.set(key('Żebbuġ'), 'Żebbuġ (Malta)');
 lookup.set(key('Mgarr, Malta'), 'Mgarr');
+for(const name of LOCALITIES){
+  const bare=name.replace(/ \((?:Gozo|Malta)\)$/,'');
+  for(const prefix of ['Il-','L-','Ħal ','Ħaż-'])if(!lookup.has(key(prefix+bare)))lookup.set(key(prefix+bare),name);
+  if(!lookup.has(key(bare)))lookup.set(key(bare),name);
+  if(name.endsWith('(Gozo)'))lookup.set(key(bare+', Gozo'),name);
+}
 
 export function canonicalLocality(value:string):string|null {
   const input=value.trim();
