@@ -5,8 +5,9 @@ import { authPage, escapeHtml, readForm, redirect, safeNext, sendPage } from './
 const id = value => typeof value === 'string' ? value : value?.id;
 const paidCheckout = checkout => ['paid', 'no_payment_required'].includes(checkout.payment_status);
 
-export function createBilling({ origin, stripe, stripeReady, webhookSecret, priceIds, accounts, sessions, auth }) {
+export function createBilling({ origin, stripe, stripeReady, webhookSecret, priceIds, accounts, sessions, auth, giftCampaign }) {
   const busy = new Set();
+  const giftAttempts = new Map();
   const message = (res, title, intro, body, status = 200) => sendPage(res, authPage({ title, intro, body, step: 2 }), status);
   function openCheckout(res, checkoutUrl) {
     const destination = new URL(checkoutUrl);
@@ -20,8 +21,9 @@ export function createBilling({ origin, stripe, stripeReady, webhookSecret, pric
     const form = sessions.form(req), returning = Boolean(account.trialStartedAt || account.stripeSubscriptionId);
     const manage = account.stripeSubscriptionId && !['canceled', 'incomplete_expired'].includes(account.status);
     const options = ['individual', 'portfolio'].map(key => `<label class="plan"><input type="radio" name="plan" value="${key}" ${key === plan ? 'checked' : ''} required><span><strong>${key === 'individual' ? 'Individual' : 'Portfolio'}</strong><small>Up to ${getPlan(key).limit} properties</small></span><strong>€${getPlan(key).amount / 100}/mo</strong></label>`).join('');
+    const giftForm = giftCampaign?.code && !manage && !account.giftRedeemedAt && !account.stripeCheckoutSessionId ? `<section aria-labelledby="gift-title"><h2 id="gift-title">Have a reference code?</h2><p>Redeem 30 days of Portfolio access. No card required. Limited to 10 accounts.</p><form method="post" action="/redeem-reference" data-loading-text="Activating gift access..."><input type="hidden" name="csrf" value="${escapeHtml(form.value)}"><input type="hidden" name="next" value="${escapeHtml(safeNext(next))}"><label for="reference-code">Reference code</label><input id="reference-code" name="reference_code" autocomplete="off" spellcheck="false" maxlength="128" required><button type="submit">Activate my 30 free days</button></form></section>` : '';
     sendPage(res, authPage({ title: manage ? 'Manage your subscription' : returning ? 'Welcome back to Ownly' : 'Your account is ready', intro: manage ? 'Your account is safe. Update your payment details or manage your subscription to continue.' : returning ? 'Choose your monthly plan to return to your property dashboard.' : 'Choose a plan to activate your 7-day free trial. Your properties will be saved to this account.', step: 2, error, notice,
-      body: `<p class="identity">Signed in as <strong>${escapeHtml(account.email)}</strong></p>${manage ? '<a class="button" href="/billing/portal">Manage subscription</a>' : !stripeReady ? '<p class="notice" role="status">Your account has been saved. Trial activation is temporarily unavailable. Please come back shortly — your free days have not started.</p>' : `<form method="post" action="/checkout"><input type="hidden" name="csrf" value="${escapeHtml(form.value)}"><input type="hidden" name="next" value="${escapeHtml(safeNext(next))}">${options}<button type="submit">${returning ? 'Continue to subscription' : 'Activate my 7-day free trial'} →</button></form><p class="note">${returning ? 'Your previous trial has already been used. Your selected monthly plan will be charged when you subscribe.' : 'Add a payment method securely with Stripe. No subscription fee during your trial. Your selected monthly price is charged after 7 days unless you cancel.'}</p>`}<p class="note">By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p><div class="actions"><a href="/account/access">Sign-in settings</a>${account.stripeCustomerId ? '<a href="/billing/portal">Billing settings</a>' : ''}</div>${auth.logoutForm(form.value)}` }), status, [form.cookie]);
+      body: `<p class="identity">Signed in as <strong>${escapeHtml(account.email)}</strong></p>${manage ? '<a class="button" href="/billing/portal">Manage subscription</a>' : !stripeReady ? '<p class="notice" role="status">Your account has been saved. Trial activation is temporarily unavailable. Please come back shortly — your free days have not started.</p>' : `<form method="post" action="/checkout"><input type="hidden" name="csrf" value="${escapeHtml(form.value)}"><input type="hidden" name="next" value="${escapeHtml(safeNext(next))}">${options}<button type="submit">${returning ? 'Continue to subscription' : 'Activate my 7-day free trial'} →</button></form><p class="note">${returning ? 'Your previous trial has already been used. Your selected monthly plan will be charged when you subscribe.' : 'Add a payment method securely with Stripe. No subscription fee during your trial. Your selected monthly price is charged after 7 days unless you cancel.'}</p>`}<p class="note">By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p><div class="actions"><a href="/account/access">Sign-in settings</a>${account.stripeCustomerId ? '<a href="/billing/portal">Billing settings</a>' : ''}</div>${giftForm}${auth.logoutForm(form.value)}` }), status, [form.cookie]);
   }
 
   async function syncSubscription(account, subscriptionId) {
@@ -67,7 +69,7 @@ export function createBilling({ origin, stripe, stripeReady, webhookSecret, pric
         } catch { json(500, { error: 'Subscription update could not be applied. Please retry.' }); }
         return true;
       }
-      if (!['/onboarding', '/checkout', '/billing/success', '/billing/cancel', '/billing/portal'].includes(url.pathname)) return false;
+      if (!['/onboarding', '/redeem-reference', '/checkout', '/billing/success', '/billing/cancel', '/billing/portal'].includes(url.pathname)) return false;
       const account = sessions.get(req.headers.cookie);
       if (!account) {
         if (req.method === 'POST') json(401, { error: 'Sign in before activating a plan.', redirect: '/login' });
@@ -78,6 +80,18 @@ export function createBilling({ origin, stripe, stripeReady, webhookSecret, pric
       if (req.method === 'GET' && url.pathname === '/onboarding') {
         if (hasProductAccess(account)) redirect(res, safeNext(url.searchParams.get('next')));
         else onboarding(req, res, account, { plan: getPlan(url.searchParams.get('plan')) ? url.searchParams.get('plan') : account.plan, next: url.searchParams.get('next') });
+        return true;
+      }
+      if (req.method === 'POST' && url.pathname === '/redeem-reference') {
+        const input = await readForm(req), next = safeNext(input.get('next'));
+        if (!sessions.verifyForm(req, input)) { onboarding(req, res, account, { error: 'Please refresh the form and try again.', status: 403, next }); return true; }
+        const now = Date.now();
+        for (const [key, bucket] of giftAttempts) if (bucket.until <= now) giftAttempts.delete(key);
+        const key = req.socket.remoteAddress || 'unknown', bucket = giftAttempts.get(key) || { count: 0, until: now + 60000 };
+        bucket.count++; giftAttempts.set(key, bucket);
+        if (bucket.count > 10) { res.setHeader('Retry-After', '60'); onboarding(req, res, account, { error: 'Too many attempts. Please wait a minute.', status: 429, next }); return true; }
+        try { accounts.redeemGift(account.id, input.get('reference_code') || '', giftCampaign); redirect(res, next); }
+        catch (error) { onboarding(req, res, account, { error: error.message, status: 400, next }); }
         return true;
       }
       if (req.method === 'POST' && url.pathname === '/checkout') {

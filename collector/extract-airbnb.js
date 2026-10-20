@@ -1,5 +1,7 @@
 // Read-only DOM extractor. This exact function was exercised against Airbnb's visible page.
 // No private APIs, hidden application state, cookies, or host personal data are read.
+// Loaded as a script by collector.mjs; its function name is the integration entrypoint.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- collector.mjs obtains this script entrypoint through node:vm.
 function extractAirbnbPage() {
   const source = new URL(location.href);
   const safe = new URL(source.origin + source.pathname);

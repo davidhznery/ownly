@@ -5,10 +5,10 @@ import { createAuth } from './auth.mjs';
 import { createBilling } from './billing.mjs';
 import { redirect, safeNext } from './auth-ui.mjs';
 
-export function createGateway({ runtime, accounts, queue, publicAssets = new Set(), origin, adminEmail, adminPassword, token, stripe, webhookSecret, priceIds, googleClientId, googleClientSecret, googleClient, sendResetEmail }) {
+export function createGateway({ runtime, accounts, queue, publicAssets = new Set(), origin, adminEmail, adminPassword, token, stripe, webhookSecret, priceIds, googleClientId, googleClientSecret, googleClient, sendResetEmail, giftCampaign }) {
   const sessions = createSessions({ password: adminPassword, token, email: adminEmail, origin, accounts });
   const auth = createAuth({ accounts, sessions, origin, adminEmail, adminPassword, googleClientId, googleClientSecret, googleClient, sendResetEmail });
-  const billing = createBilling({ origin, stripe, webhookSecret, priceIds, accounts, sessions, auth, stripeReady: Boolean(stripe && webhookSecret && priceIds.individual && priceIds.portfolio) });
+  const billing = createBilling({ origin, stripe, webhookSecret, priceIds, accounts, sessions, auth, giftCampaign, stripeReady: Boolean(stripe && webhookSecret && priceIds.individual && priceIds.portfolio) });
   const ownerHeaders = { 'oai-authenticated-user-id': 'docker-owner', 'oai-authenticated-user-email': adminEmail, 'oai-authenticated-user-full-name': 'Ownly Owner' };
   return http.createServer(async (req, res) => {
     const json = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(data)); };

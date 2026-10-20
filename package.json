@@ -11,9 +11,11 @@
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "test:airbnb": "node --test tests/airbnb*.test.mjs",
-    "test:auth": "node --test tests/docker-auth.test.mjs",
-    "test:docker": "node --test tests/docker-*.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:airbnb": "node --experimental-strip-types --test tests/airbnb*.test.mjs",
+    "test:auth": "node --experimental-strip-types --test tests/docker-auth.test.mjs",
+    "test:docker": "node --experimental-strip-types --test tests/docker-*.test.mjs"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

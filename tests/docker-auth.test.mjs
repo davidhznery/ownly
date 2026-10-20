@@ -10,7 +10,7 @@ import { createGateway } from '../docker/gateway.mjs';
 import { createResetEmailSender } from '../docker/reset-email.mjs';
 
 const password = 'correct horse battery staple', webhookSecret = 'whsec_local_fixture';
-async function fixture(t, { googleEnabled = true, stripeEnabled = true, resetEnabled = true } = {}) {
+async function fixture(t, { googleEnabled = true, stripeEnabled = true, resetEnabled = true, giftEnabled = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ownly-auth-'));
   const accounts = createAccountStore(dir), calls = [], emails = [], checkouts = new Map(), subscriptions = new Map();
   const signer = new Stripe('sk_test_fixture');
@@ -37,6 +37,7 @@ async function fixture(t, { googleEnabled = true, stripeEnabled = true, resetEna
   const forwarded = [];
   const runtime = { async dispatchFetch(url, init) { forwarded.push(init); return Response.json({ ok: true, identity: init.headers.get('oai-authenticated-user-id'), plan: init.headers.get('x-ownly-plan') }); } };
   const server = createGateway({ runtime, accounts, origin: 'http://ownly.test', adminEmail: 'owner@example.test', adminPassword: password, token: 'local-collector-secret-1234567890123456789',
+    giftCampaign: giftEnabled ? {id:'test-gift',code:'OWNLY-TEST-GIFT',days:30,plan:'portfolio'} : undefined,
     stripe: stripeEnabled ? stripe : null, webhookSecret, priceIds: { individual: 'price_individual', portfolio: 'price_portfolio' },
     googleClientId: 'google-test-client', googleClient: googleEnabled ? google : null,
     sendResetEmail: resetEnabled ? async message => { emails.push(message); } : null,
@@ -262,4 +263,39 @@ test('owner login remains available and cannot be impersonated by Google or emai
   const stranger = f.browser(), result = await stranger.request('/auth/google'), state = new URL(result.location).searchParams.get('state');
   assert.match((await stranger.request('/auth/google/callback?code=ok&state=' + state)).location, /error=owner/);
   assert.equal(f.accounts.all().length, 0);
+});
+
+
+test('reference codes require a session and CSRF; gift grants Portfolio without Stripe and expires', async t => {
+  const f=await fixture(t,{giftEnabled:true,stripeEnabled:false}), client=f.browser();
+  assert.equal((await client.request('/redeem-reference',{form:{reference_code:'OWNLY-TEST-GIFT'}})).status,401);
+  const account=await f.register(client);
+  assert.match((await client.request('/onboarding')).text,/Have a reference code/);
+  assert.equal((await client.request('/redeem-reference',{form:{csrf:'forged',reference_code:'OWNLY-TEST-GIFT'}})).status,403);
+  assert.equal((await client.request('/redeem-reference',{form:{reference_code:'WRONG'}})).status,400);
+  assert.equal(f.accounts.byId(account.id).status,'pending');
+  const redeemed=await client.request('/redeem-reference',{form:{reference_code:'OWNLY-TEST-GIFT'}});
+  assert.equal(redeemed.status,303);assert.equal(redeemed.location,'/dashboard');
+  const saved=f.accounts.byId(account.id);
+  assert.equal(saved.status,'gift');assert.equal(saved.plan,'portfolio');
+  assert.equal(saved.giftEndsAt-saved.giftRedeemedAt,30*86400000);assert.equal(saved.stripeCustomerId,null);assert.equal(f.calls.length,0);
+  assert.equal((await client.request('/api/properties')).status,200);
+  assert.equal((await client.request('/redeem-reference',{form:{reference_code:'OWNLY-TEST-GIFT'}})).status,400);
+  f.accounts.update(account.id,{giftEndsAt:Date.now()-1});
+  assert.equal((await client.request('/api/properties')).status,402);
+  assert.match((await client.request('/dashboard')).location,/onboarding/);
+});
+
+test('only ten accounts can redeem a campaign; allocation survives restart and code rotation', async t => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ownly-gift-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  const store=createAccountStore(dir), campaign={id:'launch',code:'SECRET',days:30,plan:'portfolio'};
+  for(let i=0;i<10;i++){
+    const account=store.create(`gift${i}@example.test`,null,'individual');
+    store.redeemGift(account.id,'SECRET',campaign);
+  }
+  const restarted=createAccountStore(dir), extra=restarted.create('extra@example.test',null,'individual');
+  assert.throws(()=>restarted.redeemGift(extra.id,'NEW-CODE',{...campaign,code:'NEW-CODE'}),/All 10/);
+  assert.equal(restarted.byId(extra.id).status,'pending');
+  assert.equal(restarted.all().filter(a=>a.giftRedeemedAt).length,10);
 });

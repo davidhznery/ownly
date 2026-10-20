@@ -13,7 +13,7 @@ export default function AirbnbClient(){
  const [automatic,setAutomatic]=useState(false);
  const [q,setQ]=useState<Query>(sample),[applied,setApplied]=useState<Query>(sample),[data,setData]=useState<Data|null>(null),[busy,setBusy]=useState(''),[message,setMessage]=useState(''),[failed,setFailed]=useState(false);
  async function search(query:Query){const r=await fetch('/api/admin/airbnb?'+new URLSearchParams(Object.fromEntries(Object.entries(query).map(([k,v])=>[k,String(v)]))));const d=await r.json() as Data & {error?:string};if(!r.ok)throw Error(d.error||'Search failed');setData(d);setApplied(query);}
- useEffect(()=>{search(sample).catch(e=>{setMessage(e.message);setFailed(true);});},[]);
+ useEffect(()=>{const controller=new AbortController();fetch('/api/admin/airbnb?'+new URLSearchParams(Object.fromEntries(Object.entries(sample).map(([key,value])=>[key,String(value)]))),{signal:controller.signal}).then(async response=>{const result=await response.json() as Data & {error?:string};if(!response.ok)throw Error(result.error||'Search failed');return result;}).then(result=>{if(!controller.signal.aborted)setData(result);}).catch(e=>{if(!controller.signal.aborted){setMessage(e.message);setFailed(true);}});return()=>controller.abort();},[]);
  async function run(action:string,captures?:unknown[]){setBusy(action);setMessage('');setFailed(false);try{
  if(action==='search')await search(q);
  else {const r=await fetch('/api/admin/airbnb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,query:q,captures})});const d=await r.json() as {error?:string;inserted:number;accepted:number;rejected:number;warnings?:string[]};if(!r.ok)throw Error(d.error||'Import failed');

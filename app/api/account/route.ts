@@ -9,6 +9,7 @@ export async function GET(){
   const elapsed=Date.now()-profile.trial_started_at;const daysLeft=Math.max(0,7-Math.floor(elapsed/(24*60*60*1000)));
   const requestHeaders=await headers(),billingPlan=requestHeaders.get('x-ownly-plan');
   const billingStatus=requestHeaders.get('x-ownly-status'),trialEndsAt=Number(requestHeaders.get('x-ownly-trial-end'))||null;
-  const remaining=billingStatus?(billingStatus==='trialing'&&trialEndsAt?Math.max(0,Math.ceil((trialEndsAt-Date.now())/86400000)):0):daysLeft;
-  return NextResponse.json({plan:billingPlan==='portfolio'?'portfolio':billingPlan==='individual'?'individual':profile.plan,status:billingStatus,trialEndsAt,trialStartedAt:profile.trial_started_at,daysLeft:remaining,marketAccess:billingPlan==='portfolio'||(!billingPlan&&hasMarketAccess(profile))||isAdminEmail(user.email)});
+  const giftEndsAt=Number(requestHeaders.get('x-ownly-gift-end'))||null;
+  const remaining=billingStatus==='gift'&&giftEndsAt?Math.max(0,Math.ceil((giftEndsAt-Date.now())/86400000)):billingStatus?(billingStatus==='trialing'&&trialEndsAt?Math.max(0,Math.ceil((trialEndsAt-Date.now())/86400000)):0):daysLeft;
+  return NextResponse.json({plan:billingPlan==='portfolio'?'portfolio':billingPlan==='individual'?'individual':profile.plan,status:billingStatus,giftEndsAt,trialEndsAt,trialStartedAt:profile.trial_started_at,daysLeft:remaining,marketAccess:billingPlan==='portfolio'||(!billingPlan&&hasMarketAccess(profile))||isAdminEmail(user.email)});
 }

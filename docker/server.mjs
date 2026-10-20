@@ -41,6 +41,7 @@ const queue = new JobQueue(path.join(dataDir, 'jobs.sqlite'), {
 const interval = setInterval(() => queue.tick().catch(error => console.error('Scheduler:', error.message)), 2000);
 const publicAssets = new Set(fs.readdirSync('dist/client', { recursive: true }).filter(file => fs.statSync(path.join('dist/client', file)).isFile()).map(file => '/' + file.split(path.sep).join('/')));
 const server = createGateway({ runtime: mf, accounts, queue, publicAssets, origin, adminEmail: email, adminPassword: password, token,
+  giftCampaign: { id: 'ownly-gift-2026', code: process.env.OWNLY_REFERENCE_CODE || '', days: 30, plan: 'portfolio' },
   stripe: createStripeClient(process.env.STRIPE_SECRET_KEY || ''), webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   priceIds: { individual: process.env.STRIPE_INDIVIDUAL_PRICE_ID || '', portfolio: process.env.STRIPE_PORTFOLIO_PRICE_ID || '' },
   googleClientId: process.env.GOOGLE_CLIENT_ID || '', googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || '',

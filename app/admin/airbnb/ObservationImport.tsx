@@ -1,14 +1,23 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {areas} from '@/lib/airbnb/normalize';
+type ReviewRow={id:string;name:string;url:string;locality:string;review_reason:string;total_cents:number;nights:number};
+type ImportResult={error?:string;accepted:number;inserted:number;localities:string[];pendingReview?:number};
+async function loadCoverage(signal?:AbortSignal){
+ const responses=await Promise.all([fetch('/api/admin/airbnb?coverage=1',{signal}),fetch('/api/admin/airbnb?review=1',{signal})]);
+ const d=await responses[0].json() as {error?:string;localities:Coverage[]};
+ const r=await responses[1].json() as {error?:string;rows:ReviewRow[]};
+ if(responses.some(response=>!response.ok))throw Error(d.error||r.error||'Could not load coverage');
+ return {coverage:d.localities,review:r.rows};
+}
 type Coverage={locality:string;listings:number;lastObserved:string};
 export default function ObservationImport({onSaved}:{onSaved:()=>void}){
  const [rows,setRows]=useState<unknown[]>([]),[coverage,setCoverage]=useState<Coverage[]>([]),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[valid,setValid]=useState(false),[failed,setFailed]=useState(false);
  const [source,setSource]=useState({provider:'airbnb',schema_version:1,currency:'EUR'});
  const [review,setReview]=useState<{id:string;name:string;url:string;locality:string;review_reason:string;total_cents:number;nights:number}[]>([]);
- async function refresh(){const responses=await Promise.all([fetch('/api/admin/airbnb?coverage=1'),fetch('/api/admin/airbnb?review=1')]);const [d,r]=await Promise.all(responses.map(response=>response.json()));if(responses.some(response=>!response.ok))throw Error(d.error||r.error||'Could not load coverage');setCoverage(d.localities);setReview(r.rows);}
- useEffect(()=>{refresh().catch(e=>{setFailed(true);setMessage(e.message);});},[]);
- async function request(action:string,input:unknown[],metadata=source){const r=await fetch('/api/admin/airbnb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,rows:input,...metadata})});const d=await r.json();if(!r.ok)throw Error(d.error||'Import failed');return d;}
+ async function refresh(){const data=await loadCoverage();setCoverage(data.coverage);setReview(data.review);}
+ useEffect(()=>{const controller=new AbortController();loadCoverage(controller.signal).then(data=>{if(!controller.signal.aborted){setCoverage(data.coverage);setReview(data.review);}}).catch(e=>{if(!controller.signal.aborted){setFailed(true);setMessage(e.message);}});return()=>controller.abort();},[]);
+ async function request(action:string,input:unknown[],metadata=source){const r=await fetch('/api/admin/airbnb',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,rows:input,...metadata})});const d=await r.json() as ImportResult;if(!r.ok)throw Error(d.error||'Import failed');return d;}
  async function choose(file:File){setValid(false);setRows([]);setMessage('');setBusy(true);setFailed(false);try{
   if(file.size>1900000)throw Error('Maximum file size: 1.9 MB.');
   const data=JSON.parse(await file.text());if(data?.currency&&data.currency!=='EUR')throw Error('Only EUR prices are supported.');const input=Array.isArray(data)?data:data?.observations;
@@ -17,7 +26,7 @@ export default function ObservationImport({onSaved}:{onSaved:()=>void}){
  }catch(e){setFailed(true);setMessage(e instanceof Error?e.message:'Invalid JSON');}finally{setBusy(false);}}
  async function save(){setBusy(true);setFailed(false);try{const d=await request('import-rows',rows);setValid(false);setRows([]);setMessage(`${d.inserted} observations added · ${d.accepted-d.inserted} already stored. Use matching locality, guests and stay dates to see them in the listing.`);onSaved();await refresh();}catch(e){setFailed(true);setMessage(e instanceof Error?e.message:'Import failed');}finally{setBusy(false);}}
  function template(){const today=new Date().toISOString().slice(0,10);const checkout=new Date(Date.parse(today)+3*86400000).toISOString().slice(0,10);const data={currency:'EUR',supported_localities:areas,instructions:'Replace example values with real Airbnb observations. Copy the observation for each listing. total_cents is the advertised total for the full stay in EUR cents. Maximum 1,000 observations per file. Do not import the example as real data.',observations:[{listing_id:'REPLACE_WITH_REAL_ID',name:'REPLACE_WITH_LISTING_NAME',url:'https://www.airbnb.com/rooms/REPLACE_WITH_REAL_ID',locality:areas[0],property_type:'apartment',bedrooms:2,adults:4,checkin:today,checkout,total_cents:0,observed_at:new Date().toISOString()}]};const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='ownly-observations-template.json';a.click();URL.revokeObjectURL(url);}
- const covered=new Set(coverage.filter(c=>areas.includes(c.locality)).map(c=>c.locality));const missing=areas.filter(a=>!covered.has(a));
+ const covered=new Set(coverage.filter(c=>areas.some(area=>area===c.locality)).map(c=>c.locality));const missing=areas.filter(a=>!covered.has(a));
  return <section className="ab-card"><div className="ab-heading"><div><h2>Expand your market data now</h2><p>Add real prices from a JSON file while automatic searches continue.</p></div><span className="ab-tag">{covered.size} / {areas.length} LOCALITIES WITH DATA</span></div>
  <p className="ab-note">Import Airbnb or Booking JSON. One observation per listing and stay, with EUR totals, original links and timestamps. Booking files require provider: booking and schema_version: 1. Files add to the current listing; repeated observations are skipped. Records flagged for review are excluded from market averages.</p>
  <div className="ab-actions"><button className="outline-button" onClick={template}>Download JSON template</button><label className="ab-file">Validate JSON file<input type="file" accept=".json,application/json" disabled={busy} onChange={e=>{if(e.target.files?.[0])void choose(e.target.files[0]);e.target.value='';}}/></label><button className="button" disabled={busy||!valid} onClick={save}>{busy?'Processing…':`Add ${rows.length} observations`}</button></div>

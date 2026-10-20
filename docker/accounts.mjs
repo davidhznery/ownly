@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {randomBytes,randomUUID,scryptSync,timingSafeEqual} from 'node:crypto';
+import {createHash,randomBytes,randomUUID,scryptSync,timingSafeEqual} from 'node:crypto';
 import StripeClient from 'stripe';
 
 export function createAccountStore(dataDir){
@@ -9,6 +9,19 @@ export function createAccountStore(dataDir){
  const write=accounts=>{const temporary=file+'.tmp';fs.writeFileSync(temporary,JSON.stringify(accounts),'utf8');fs.renameSync(temporary,file);};
  return {
   all:read,
+  redeemGift(id,code,campaign,now=Date.now()){
+   if(!campaign?.code||!Number.isInteger(campaign.days)||campaign.days<1||campaign.days>3650||!getPlan(campaign.plan))throw Error('Gift access is unavailable.');
+   const digest=value=>createHash('sha256').update(String(value).trim()).digest();
+   if(!timingSafeEqual(digest(code),digest(campaign.code)))throw Error('This reference code is invalid.');
+   const accounts=read(),account=accounts.find(a=>a.id===id);
+   if(!account)throw Error('Sign in before redeeming your code.');
+   if(account.giftRedeemedAt)throw Error('This account has already redeemed gift access.');
+   if(hasProductAccess(account,now)||account.stripeSubscriptionId||account.stripeCheckoutSessionId)throw Error('Gift codes are for accounts that have not started a subscription or checkout.');
+   if(accounts.filter(a=>a.giftCampaign===campaign.id).length>=10)throw Error('All 10 places for this reference code have been claimed.');
+   Object.assign(account,{giftCampaign:campaign.id,giftRedeemedAt:now,giftEndsAt:now+campaign.days*86400000,plan:campaign.plan,status:'gift',trialStartedAt:now});
+   // Synchronous read/check/write keeps the ten-place allocation atomic in this gateway process.
+   write(accounts);return account;
+  },
   byId(id){return read().find(account=>account.id===id)||null;},
   byEmail(email){return read().find(account=>account.email===String(email||'').trim().toLowerCase())||null;},
   byGoogleId(id){return id?read().find(account=>account.googleId===id)||null:null;},
@@ -35,9 +48,9 @@ export function createAccountStore(dataDir){
 const plans={individual:{name:'Ownly Individual',amount:900,limit:3},portfolio:{name:'Ownly Portfolio',amount:2500,limit:15}};
 export function getPlan(id){return Object.hasOwn(plans,id)?plans[id]:null;}
 export function hasProductAccess(account,now=Date.now()){
- return Boolean(account&&(account.owner||account.status==='active'||(account.status==='trialing'&&(!account.trialEndsAt||account.trialEndsAt>now))));
+ return Boolean(account&&(account.owner||account.status==='active'||(account.status==='gift'&&account.giftEndsAt>now)||(account.status==='trialing'&&(!account.trialEndsAt||account.trialEndsAt>now))));
 }
-export function accountHeaders(account){return {'oai-authenticated-user-id':account.id,'oai-authenticated-user-email':account.email,'oai-authenticated-user-full-name':encodeURIComponent(account.name||account.email.split('@')[0]),'oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8','x-ownly-plan':account.plan,'x-ownly-status':account.status,'x-ownly-trial-end':String(account.trialEndsAt||0)};}
+export function accountHeaders(account){return {'oai-authenticated-user-id':account.id,'oai-authenticated-user-email':account.email,'oai-authenticated-user-full-name':encodeURIComponent(account.name||account.email.split('@')[0]),'oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8','x-ownly-plan':account.plan,'x-ownly-status':account.status,'x-ownly-trial-end':String(account.trialEndsAt||0),'x-ownly-gift-end':String(account.giftEndsAt||0)};}
 
 export function createStripeClient(key){return key?new StripeClient(key,{apiVersion:'2026-08-26.dahlia'}):null;}
 
