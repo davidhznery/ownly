@@ -94,7 +94,7 @@ export default function Home() {
       {videoOpen&&<div className="video-modal" role="dialog" aria-modal="true" aria-labelledby="how-it-works-title" onMouseDown={(event)=>{if(event.target===event.currentTarget)setVideoOpen(false)}}>
         <div className="video-modal-panel">
           <div className="video-modal-head"><div><span>OWNLY IN 24 SECONDS</span><h2 id="how-it-works-title">See how it works</h2></div><button type="button" onClick={()=>setVideoOpen(false)} aria-label="Close video">×</button></div>
-          <video src="/ownly-how-it-works.mp4" controls autoPlay playsInline preload="metadata" aria-label="Ownly walkthrough with ambient background music">Your browser does not support the video element.</video>
+          <video src="/ownly-how-it-works.mp4?v=cinematic-3" controls autoPlay playsInline preload="metadata" aria-label="Ownly walkthrough with cinematic electronic background music">Your browser does not support the video element.</video>
         </div>
       </div>}
     </main>
